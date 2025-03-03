@@ -20,6 +20,82 @@ load_catlog_data  <- function(input_file) {
     return(traject)
 }
 
+
+
+
+
+load_ofb_data  <- function(input_file) {
+  # INPUT :
+  #     input_file : path to a csv file containing a Catlog trajectory
+  # OUTPUT :
+  #     a data.frame containing trajectory, colnames being c("lat", "lon", "Altitude", "actX", "actY", "date")
+  
+  #Charger les data csv des logers
+  traject <- read.csv(input_file, header=TRUE)
+  
+  # Renommer les colonnes pour correspondre au format Catlog (adapter si nécessaire)
+  colnames(traject)[c(7, 8, 11)] <- c("lat", "lon", "Altitude")
+  
+  traject$date = as.POSIXct(paste(traject$Date, traject$Time), tz="GMT", format="%m/%d/%Y %H:%M:%S")
+  
+  # Sélection des colonnes pertinentes (adapter si besoin)
+  traject <- traject %>% dplyr::select(lat, lon, Altitude, x, y, date, infoloc)
+  return(traject)
+}
+
+
+
+
+
+
+
+
+
+load_ofb_data_rdata <- function(input_file) {
+  # INPUT :
+  #     input_file : path to an .Rdata file containing an OFB trajectory
+  # OUTPUT :
+  #     a data.frame containing trajectory, colnames being c("lat", "lon", "Altitude", "x", "y", "date")
+  
+  # Charger le fichier Rdata dans un environnement temporaire
+  env <- new.env()
+  load(input_file, envir = env)
+  
+  # Trouver tous les objets chargés
+  loaded_objects <- ls(env)
+  
+  # Vérifier qu'il y a au moins un objet
+  if (length(loaded_objects) == 0) {
+    stop(paste("Aucun objet trouvé dans le fichier :", input_file))
+  }
+  
+  # Vérifier si plusieurs objets existent
+  if (length(loaded_objects) > 1) {
+    message(paste("Attention : Plusieurs objets trouvés dans", input_file, 
+                  ". Utilisation du premier :", loaded_objects[1]))
+  }
+  
+  # Charger le premier objet trouvé
+  traject <- env[[loaded_objects[1]]]
+  
+  # Vérifier que c'est bien un data.frame
+  if (!is.data.frame(traject)) {
+    stop("Le fichier Rdata ne contient pas un data.frame.")
+  }
+  
+  # Renommer les colonnes pour correspondre au format Catlog (adapter si nécessaire)
+  colnames(traject)[c(7, 8, 11)] <- c("lat", "lon", "Altitude")
+  
+  # Conversion de la colonne date en format POSIXct
+  traject$date <- as.POSIXct(traject$date, tz="GMT", format="%Y-%m-%d %H:%M:%S")
+  
+  # Sélection des colonnes pertinentes (adapter si besoin)
+  traject <- traject %>% dplyr::select(lat, lon, Altitude, x, y, date, infoloc)
+  
+  return(traject)
+}
+
+
 load_followit_data  <- function(input_file) {
     # INPUT :
     #     input_file : path to a csv file containing a Folowit trajectory

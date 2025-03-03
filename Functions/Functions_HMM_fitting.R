@@ -183,6 +183,72 @@ hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
     return(run)
 }
 
+
+
+## TEST OFB
+
+# Adapter le HMM pour supporter les différents types de données
+hmm_fit <- function(data, runPar, alpage_directory, sampling_type) {
+  ID <- data$ID[1]
+  settings <- SAMPLING[[sampling_type]]
+  sampling_period <- settings$sampling_period
+  
+  data_hmm <- regularise_trajectories(data, sampling_period)
+  if (runPar$rollavg) data_hmm <- rolling_averaging_trajectories(data_hmm, conv= runPar$rollavg_convolution)
+  
+  runPar <- scale_step_parameters_to_sampling_period(runPar, sampling_type)
+  
+  # Appliquer le sous-échantillonnage uniquement si nécessaire
+  if (settings$resampling_ratio > 1) {
+    data_hmm <- resample_trajectories(data_hmm, settings$resampling_ratio, runPar$resampling_first_index)
+  }
+  
+  data_hmm <- prepare_hmm_trajectories(data_hmm)
+  
+  knownStates <- rep(NA, nrow(data_hmm))
+  if(runPar$knownRestingStates) {
+    knownStates[(data_hmm$hour > 3 & data_hmm$hour < 3.5) | (data_hmm$hour > 20.5 & data_hmm$hour < 21)] <- 1
+  }
+  
+  stateNames <- c("Repos", "Paturage", "Deplacement")
+  run <- fitHMM(data_hmm, nbStates = 3, dist = runPar$dist, DM=runPar$DM, Par0 = runPar$Par0,
+                estAngleMean=list(angle=TRUE), fixPar = runPar$fixPar,
+                stateNames = stateNames,
+                knownStates = knownStates,
+                formula = runPar$covariants,
+                optMethod = "Nelder-Mead")
+  
+  run$data$state <- viterbi(run)
+  state_proba <- stateProbs(run)
+  run$data$state_proba <- sapply(1:nrow(run$data), function(i) state_proba[i, run$data$state[i]])
+  
+  dir.create(paste0(alpage_directory, "individual_trajectories/"), recursive = TRUE)
+  plot_results(run, paste0(alpage_directory, "individual_trajectories/", ID))
+  
+  run$data <- run$data[!is.na(run$data$x),]
+  run$data <- run$data[order(run$data$time),]
+  run$data$ID <- ID
+  
+  return(run)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 par_HMM_fit <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
     # Paralelized wrapper for hmm_fit
     # Fit a momentuHMM hmm on one several individuals’ trajectories and save the resulting figures.
@@ -235,8 +301,6 @@ par_HMM_fit <- function(data, run_parameters, ncores, individual_info_file, samp
 
     return(results)
 }
-
-
 
 
 
@@ -301,6 +365,78 @@ par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file,
   
   return(results)
 }
+
+
+
+
+
+
+## TEST OFB
+
+par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file, sampling_type, output_dir) {
+  print("+++ momentuHMM parallel RUN +++")
+  
+  startTime <- Sys.time()
+  clus <- makeCluster(ncores, outfile='')
+  clusterExport(clus, as.list(lsf.str(.GlobalEnv)))
+  clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "SAMPLING"), envir = environment())
+  
+  clusterCall(clus, function() {
+    options(warn=-1)
+    suppressPackageStartupMessages(library(tidyverse))
+    library(lubridate)
+    library(momentuHMM)
+    library(adehabitatLT)
+    library(sf)
+    library(sp)
+    library(terra)
+    source("Functions/Functions_utility.R")
+    source("Functions/Functions_map_plot.R")
+    source("Functions/Constants.R")
+    options(warn=0)
+  })
+  
+  results <- parLapply(clus, unique(data$ID),
+                       function(ID) {
+                         alpage <- get_individual_alpage(ID, individual_info_file)
+                         return(hmm_fit(data[data$ID==ID,], run_parameters, paste0(output_dir, alpage, "/"), sampling_period))
+                       }
+  )
+  
+  stopCluster(clus)
+  endTime <- Sys.time()
+  print(paste("Execution time:", round(difftime(endTime, startTime, units='mins'),2), "min"))
+  
+  
+  return(results)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ### HMM results plotting functions
 plot_results <- function(hmm, output_pdf_file) {
@@ -576,4 +712,570 @@ scale_step_parameters_to_resampling_ratio <- function(run_parameters) {
     run_parameters$Par0$step[6] = sqrt(run_parameters$resampling_ratio) * run_parameters$Par0$step[6]
 
     return(run_parameters)
+}
+
+
+
+
+
+#TEST_OFB
+# Ajustement des paramètres en fonction de la fréquence d'échantillonnage
+scale_step_parameters_to_sampling_period <- function(run_parameters, sampling_params) {
+  param_scaling_factor <- sampling_params$param_scaling_factor
+  
+  run_parameters$Par0$step[2] <- param_scaling_factor * run_parameters$Par0$step[2]
+  run_parameters$Par0$step[5] <- sqrt(param_scaling_factor) * run_parameters$Par0$step[5]
+  run_parameters$Par0$step[3] <- param_scaling_factor * run_parameters$Par0$step[3]
+  run_parameters$Par0$step[6] <- sqrt(param_scaling_factor) * run_parameters$Par0$step[6]
+  
+  return(run_parameters)
+}
+
+
+
+## TETS OFB NEW FUNCTION 
+
+# Définition d'un objet SAMPLING pour une gestion modulaire
+get_sampling_parameters <- function(sampling_period) {
+  if (sampling_period < 10) {
+    resampling_ratio <- ceiling(10 / sampling_period)  # On ramène à 10 min
+    param_scaling_factor <- 10 / 2  # Facteur basé sur 2 min vers 10 min
+  } else {
+    resampling_ratio <- 1  # Pas de rééchantillonnage
+    param_scaling_factor <- sampling_period / 2  # Échelle basée sur 2 min
+  }
+  return(list(sampling_period = sampling_period, resampling_ratio = resampling_ratio, param_scaling_factor = param_scaling_factor))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### PARTIE MODIFI 
+
+
+
+
+
+
+### HMM fitting and plotting functions
+### HMM fitting and plotting functions
+hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
+  # Fit a momentuHMM hmm on one individual’s sub-trajectories and save the resulting figures.
+  # INPUTS :
+  #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
+  #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
+  #   alpage_directory : a directory to save the resulting figures of this individual’s hmm fit
+  # OUTPUT : the momemtuHMM object, with a $data field containing the original trajectory (or sub-trajectories), ordered by time,
+  #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
+  
+  ### DATA PREPARATION
+  # Vérification des colonnes obligatoires
+  required_columns <- c("ID", "time", "x", "y")
+  if (!all(required_columns %in% colnames(data))) {
+    stop(paste("Les colonnes suivantes sont manquantes dans les données :", 
+               paste(setdiff(required_columns, colnames(data)), collapse = ", ")))
+  }
+  
+  ID <- data$ID[1]
+  print(paste("🔍 Préparation des données pour l'ID :", ID))
+  
+  # Régularisation des trajectoires
+  data_hmm <- regularise_trajectories(data, sampling_period)
+  if (is.null(data_hmm) || nrow(data_hmm) == 0) {
+    stop("Erreur lors de la régularisation des trajectoires : données vides ou nulles.")
+  }
+  
+  # Application du rolling average si nécessaire
+  if (runPar$rollavg) {
+    data_hmm <- rolling_averaging_trajectories(data_hmm, conv = runPar$rollavg_convolution)
+  }
+  
+  # Sous-échantillonnage si nécessaire
+  if (runPar$resampling_ratio > 1) {
+    data_hmm <- resample_trajectories(data_hmm, runPar$resampling_ratio, runPar$resampling_first_index)
+  }
+  
+  # Préparation finale des trajectoires pour le HMM
+  data_hmm <- prepare_hmm_trajectories(data_hmm)
+  
+  # États connus (optionnel)
+  knownStates <- rep(NA, nrow(data_hmm))
+  if (runPar$knownRestingStates) {
+    knownStates[(data_hmm$hour > 3 & data_hmm$hour < 3.5) | (data_hmm$hour > 20.5 & data_hmm$hour < 21)] <- 1
+  }
+  
+  ### MODEL FITTING
+  stateNames <- c("Repos", "Paturage", "Deplacement")
+  print(paste("🚀 Ajustement du modèle HMM pour l'ID :", ID))
+  
+  run <- fitHMM(data_hmm, nbStates = 3, dist = runPar$dist, DM = runPar$DM, Par0 = runPar$Par0,
+                estAngleMean = list(angle = TRUE), fixPar = runPar$fixPar,
+                stateNames = stateNames, knownStates = knownStates,
+                formula = runPar$covariants, optMethod = "Nelder-Mead")
+  
+  # Récupération des états les plus probables
+  run$data$state <- viterbi(run)
+  state_proba <- stateProbs(run)
+  run$data$state_proba <- NA
+  for (i in 1:nrow(run$data)) {
+    run$data$state_proba[i] <- state_proba[i, run$data$state[i]]
+  }
+  
+  # Création des répertoires pour les figures
+  dir.create(paste0(alpage_directory, "individual_trajectories/"), recursive = TRUE, showWarnings = FALSE)
+  plot_results(run, paste0(alpage_directory, "individual_trajectories/", ID))
+  
+  # Suppression des NA et réorganisation des données
+  run$data <- run$data[!is.na(run$data$x), ]
+  run$data <- run$data[order(run$data$time), ]
+  
+  # Restauration de l'ID original
+  run$data$ID <- ID
+  
+  return(run)
+}
+
+
+par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
+  print(paste0("+++ momentuHMM parallel RUN +++"))
+  
+  startTime <- Sys.time()
+  
+  # Vérification des colonnes obligatoires
+  required_columns <- c("ID", "time", "x", "y")
+  if (!all(required_columns %in% colnames(data))) {
+    stop(paste("Les colonnes suivantes sont manquantes dans les données :", 
+               paste(setdiff(required_columns, colnames(data)), collapse = ", ")))
+  }
+  
+  # Création du cluster parallèle
+  clus <- makeCluster(ncores, outfile = '')
+  clusterExport(clus, as.list(lsf.str(.GlobalEnv)))
+  clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
+  
+  # Chargement des bibliothèques sur chaque nœud
+  clusterCall(clus, function() {
+    options(warn = -1)
+    suppressPackageStartupMessages(library(tidyverse))
+    theme_set(theme_bw())
+    library(lubridate)
+    library(momentuHMM)
+    library(adehabitatLT)
+    library(sf)
+    library(sp)
+    library(terra)
+    source("Functions/Functions_utility.R")
+    BACKGROUND_TYPE <- "BDALTI"
+    source("Functions/Functions_map_plot.R")
+    source("Functions/Constants.R")
+    options(warn = 0)
+  })
+  
+  # Exécution parallèle
+  results <- parLapply(clus, unique(data$ID), function(ID) {
+    tryCatch({
+      print(paste0("🚀 Processing ID : ", ID))
+      alpage <- get_individual_alpage(ID, individual_info_file)
+      print(paste0("🔍 ID: ", ID, " - Alpage récupéré : ", alpage))
+      
+      sampling_period <- get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+      data_individual <- data[data$ID == ID, ]
+      
+      if (nrow(data_individual) < 500) {
+        print(paste0("⚠️ ID: ", ID, " ignoré car trop peu de points après sous-échantillonnage (", nrow(data_individual), " points)"))
+        return(NULL)
+      }
+      
+      return(hmm_fit(data_individual, run_parameters, paste0(output_dir, alpage, "/"), sampling_period))
+    }, error = function(e) {
+      message(paste("❌ Erreur pour l'ID :", ID))
+      message(e)
+      return(NULL)
+    })
+  })
+  
+  stopCluster(clus)
+  endTime <- Sys.time()
+  print(paste("+++ Cluster total execution time :", round(difftime(endTime, startTime, units = 'mins'), 2), "min +++"))
+  
+  return(results)
+}
+
+
+
+
+
+
+par_HMM_fit_test_sequentiel <- function(data, run_parameters, individual_info_file, sampling_period, output_dir) {
+  print(paste0("+++ momentuHMM SEQUENTIAL RUN +++"))
+  
+  startTime <- Sys.time()
+  
+  # Vérification des colonnes obligatoires
+  required_columns <- c("ID", "time", "x", "y")
+  if (!all(required_columns %in% colnames(data))) {
+    stop(paste("Les colonnes suivantes sont manquantes dans les données :", 
+               paste(setdiff(required_columns, colnames(data)), collapse = ", ")))
+  }
+  
+  results <- list()  # Stockage des résultats
+  
+  for (ID in unique(data$ID)) {
+    tryCatch({
+      print(paste0("🚀 Processing ID : ", ID))
+      
+      alpage <- get_individual_alpage(ID, individual_info_file)
+      print(paste0("🔍 ID: ", ID, " - Alpage récupéré : ", alpage))
+      
+      sampling_period <- get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+      print(paste0("⏳ Sampling Period récupéré pour ID ", ID, " : ", sampling_period))
+      
+      data_individual <- data[data$ID == ID, ]
+      
+      print(paste0("📊 Nombre d'observations pour ID ", ID, " : ", nrow(data_individual)))
+      
+      if (nrow(data_individual) < 500) {
+        print(paste0("⚠️ ID: ", ID, " ignoré car trop peu de points après sous-échantillonnage (", nrow(data_individual), " points)"))
+        next  # Passe au suivant sans exécuter HMM
+      }
+      
+      # Vérification des doublons dans les timestamps
+      duplicate_times <- data_individual %>%
+        group_by(time) %>%
+        summarise(count = n(), .groups = "drop") %>%
+        filter(count > 1)
+      
+      if (nrow(duplicate_times) > 0) {
+        print(paste0("⚠️ ID: ", ID, " contient ", nrow(duplicate_times), " timestamps dupliqués"))
+        print(head(duplicate_times, 10))  # Affiche les 10 premiers doublons
+        next
+      }
+      
+      print(paste0("✅ ID: ", ID, " prêt pour le HMM Fit"))
+      
+      result <- hmm_fit(data_individual, run_parameters, paste0(output_dir, alpage, "/"), sampling_period)
+      
+      results[[ID]] <- result
+      
+    }, error = function(e) {
+      message(paste("❌ Erreur pour l'ID :", ID))
+      message(e)
+    })
+  }
+  
+  endTime <- Sys.time()
+  print(paste("+++ Total execution time :", round(difftime(endTime, startTime, units = 'mins'), 2), "min +++"))
+  
+  return(results)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#NOUVELLE FUNCTION
+
+
+
+
+
+
+get_sampling_parameters <- function() {
+  sampling_period <- SAMPLING  # Utilisation de l'objet SAMPLING
+  
+  if (sampling_period < 10) {
+    resampling_ratio <- ceiling(10 / sampling_period)  # On ramène à 10 min
+    param_scaling_factor <- 10 / 2  # Facteur basé sur 2 min vers 10 min
+  } else {
+    resampling_ratio <- 1  # Pas de rééchantillonnage
+    param_scaling_factor <- sampling_period / 2  # Échelle basée sur 2 min
+  }
+  
+  return(list(sampling_period = sampling_period, resampling_ratio = resampling_ratio, param_scaling_factor = param_scaling_factor))
+}
+
+
+
+
+
+
+
+regularise_trajectories <- function(data, sampling_period = 120, max_gap = 90) {
+  # INPUTS :
+  #   - data : jeu de données GPS
+  #   - sampling_period : période d’échantillonnage en secondes (ex: 120s pour 2 min, 1800s pour 30 min)
+  #   - max_gap : durée maximale d'interruption (en minutes) avant de considérer une nouvelle trajectoire
+  # OUTPUT :
+  #   - data régularisé avec des trajectoires séparées si interruption > max_gap
+  
+  print(paste0("🔄 Régularisation des trajectoires avec max_gap = ", max_gap, " min..."))
+  
+  # Découpage en plusieurs trajs si interruption > max_gap minutes
+  data <- split_at_gap(data = data, max_gap = max_gap, shortest_track = 2*60)
+  
+  # Si les données sont déjà en 30 minutes, on applique juste la segmentation et on retourne directement
+  if (sampling_period == 1800) {
+    print("✅ Données déjà à 30 min, segmentation appliquée mais pas de rééchantillonnage.")
+    return(data)
+  }
+  
+  # Sinon, on applique la régularisation complète
+  print("⚙️ Application de la régularisation temporelle avec padding...")
+  
+  data <- data %>%
+    group_by(ID) %>%
+    group_modify( function(df, group_id) {
+      data_na <- setNA(ltraj = as.ltraj(xy = df[, c("x", "y")],
+                                        date = df$time,
+                                        id = group_id),
+                       date.ref = df$time[1],  # Prendre le premier timestamp de la traj
+                       dt = sampling_period, tol = 60, units = "sec")
+      data_na <- ld(data_na)[, c("x", "y", "date")] # Convertir en dataframe et garder seulement les colonnes utiles
+      colnames(data_na) <- c("x", "y", "time")
+      return(data_na)
+    }, .keep = FALSE ) %>%
+    ungroup() %>%
+    as.data.frame()
+  
+  return(data)
+}
+
+
+
+
+scale_step_parameters_to_resampling_ratio <- function(run_parameters, alpage) {
+  if (alpage == "Combe-Madame") {
+    # Ajustement spécifique à cet alpage pour réduire la dominance du pâturage
+    run_parameters$Par0$step[2] = 0.8 * sampling_parameters$param_scaling_factor * run_parameters$Par0$step[2] # Réduction des transitions rapides
+    run_parameters$Par0$step[5] = 0.8 * sqrt(sampling_parameters$param_scaling_factor) * run_parameters$Par0$step[5]
+    run_parameters$Par0$step[3] = 0.8 * sampling_parameters$param_scaling_factor * run_parameters$Par0$step[3]
+    run_parameters$Par0$step[6] = 0.8 * sqrt(sampling_parameters$param_scaling_factor) * run_parameters$Par0$step[6]
+  } else {
+    # Valeurs normales pour les autres alpages
+    run_parameters$Par0$step[2] = sampling_parameters$param_scaling_factor * run_parameters$Par0$step[2]
+    run_parameters$Par0$step[5] = sqrt(sampling_parameters$param_scaling_factor) * run_parameters$Par0$step[5]
+    run_parameters$Par0$step[3] = sampling_parameters$param_scaling_factor * run_parameters$Par0$step[3]
+    run_parameters$Par0$step[6] = sqrt(sampling_parameters$param_scaling_factor) * run_parameters$Par0$step[6]
+  }
+  
+  return(run_parameters)
+}
+
+
+
+
+
+
+
+
+
+
+
+### HMM fitting and plotting functions
+hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
+  # Fit a momentuHMM hmm on one individual’s sub-trajectories and save the resulting figures.
+  # INPUTS :
+  #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
+  #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
+  #   alpage_directory : a directory to save the resulting figures of this individual’s hmm fit
+  # OUTPUT : the momemtuHMM object, with a $data field containing the original trajectory (or sub-trajectories), ordered by time,
+  #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
+  
+  ### DATA PREPARATION
+  ID = data$ID[1]
+  data_hmm <- regularise_trajectories(data, sampling_period)
+  if (runPar$rollavg) data_hmm <- rolling_averaging_trajectories(data_hmm, conv= runPar$rollavg_convolution)
+  data_hmm <- resample_trajectories(data_hmm, runPar$resampling_ratio, runPar$resampling_first_index)
+  data_hmm <- prepare_hmm_trajectories(data_hmm)
+  
+  knownStates <- rep(NA, nrow(data_hmm))
+  
+  if(runPar$knownRestingStates) { # if we consider some resting states to be known, then the first and last half-hours of record period are considered to be resting states
+    knownStates[(data_hmm$hour > 3 && data_hmm$hour < 3.5) || (data_hmm$hour > 20.5 && data_hmm$hour < 21 )] <- 1
+  }
+  
+  ### MODEL FITTING
+  stateNames = c("Repos", "Paturage", "Deplacement")
+  run <- fitHMM(data_hmm, nbStates = 3, dist = runPar$dist, DM=runPar$DM, Par0 = runPar$Par0,
+                estAngleMean=list(angle=TRUE), fixPar = runPar$fixPar,
+                stateNames = stateNames,
+                knownStates = knownStates,
+                formula = runPar$covariants,
+                optMethod = "Nelder-Mead")
+  
+  # Get the most likely states and their probabilities
+  run$data$state <- viterbi(run)
+  state_proba = stateProbs(run)
+  run$data$state_proba = NA
+  for (i in 1:nrow(run$data)) { run$data$state_proba[i] = state_proba[i, run$data$state[i]] }
+  
+  # Plot HMM results and trajectories
+  dir.create(paste0(alpage_directory,"individual_trajectories/"), recursive = TRUE)
+  plot_results(run, paste0(alpage_directory,"individual_trajectories/",ID))
+  
+  # Remove NA
+  run$data <- run$data[!is.na(run$data$x),]
+  # Reorder data by time
+  run$data <- run$data[order(run$data$time),]
+  
+  # Restore original ID
+  run$data$ID <- ID
+  
+  return(run)
+}
+
+
+
+par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
+  # Paralelized wrapper for hmm_fit
+  # Fit a momentuHMM hmm on one several individuals’ trajectories and save the resulting figures.
+  # INPUTS :
+  #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
+  #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
+  #   individual_info_file : path to the csv file containing information about every individual ID, must contain "ID", "Alpage" and "Periode d’echantillonnage" columns.
+  # OUTPUT : a list of the individual’s momentuHMM objects. Each momentuHMM object’s $data field contains the original trajectory (or sub-trajectories), ordered by time,
+  #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
+  
+  print(paste0("+++ momentuHMM parallel RUN +++"))
+  
+  startTime <- Sys.time()
+  clus <- makeCluster(ncores, outfile='') # outfile='' is verbose option
+  clusterExport(clus, as.list(lsf.str(.GlobalEnv))) # export all loaded functions
+  clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
+  # Load libraries
+  clusterCall(clus, function() {
+    options(warn=-1)
+    # For the pipes
+    suppressPackageStartupMessages(library(tidyverse)) # includes ggplot2 and dplyr among others
+    theme_set(theme_bw()) # theme for ggplot2
+    library(lubridate)
+    # Movement modelling packages
+    library(momentuHMM)
+    # library(foieGras)
+    library(adehabitatLT)
+    # GIS packages
+    library(sf)
+    library(sp)
+    library(terra)
+    # Load functions and set paths
+    source("Functions/Functions_utility.R") # Courtesy Théo Michelot
+    BACKGROUND_TYPE = "BDALTI"
+    source("Functions/Functions_map_plot.R")
+    source("Functions/Constants.R")
+    options(warn=0)
+  })
+  
+  results <- parLapply(clus, unique(data$ID),
+                       function(ID) {
+                         alpage = get_individual_alpage(ID, individual_info_file)
+                         
+                         # 🔍 Debugging : Vérifier si l'alpage est bien "alpage_demo"
+                         print(paste0("🔍 ID: ", ID, " - Alpage récupéré : ", alpage))
+                         
+                         sampling_period = get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+                         
+                         return(hmm_fit(data[data$ID==ID,], run_parameters, paste0(output_dir, alpage, "/"), sampling_period))
+                       }
+  )
+  
+  stopCluster(clus)
+  endTime <- Sys.time()
+  print(paste("+++ Cluster total excecution time :", round(difftime(endTime, startTime, units='mins'),2), "min +++"))
+  
+  return(results)
 }

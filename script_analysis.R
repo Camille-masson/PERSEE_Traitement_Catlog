@@ -7,9 +7,15 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse
-YEAR <- 9999
+YEAR <- 2022
+TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
+SAMPLING <- 2
+alpage <- "Viso"
+alpages <- "Viso"
+
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
+  "2013" = c("Combe-Madame"),
   "2022" = c("Ane-et-Buyant", "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"),
   "2023" = c("Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"),
   "2024" = c("Viso", "Cayolle", "Sanguiniere")
@@ -30,7 +36,7 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
   
   # Les alpage devant être traité
-  alpages <- c("Alpage_demo")
+  alpages <- c("Combe-Madame")
   
   ## SORTIE ##
   
@@ -43,22 +49,65 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   output_file <- file.path(gps_output_dir, paste0("Donnees_brutes_", YEAR, "_", alpages, "_simplifiees.gpkg"))
   
   
-  ## CODE ##
   
   lapply(alpages, function(alpage) {
-    collar_dir <- file.path(raw_data_dir, alpage) # Chemin Dossier GPS contenant les fichier de l'alpage
-    collar_files <- list.files(collar_dir, full.names = TRUE) # Liste des CSV de ce dossier (les différents colliers)
+    collar_dir <- file.path(raw_data_dir, alpage)  # GPS folder path containing the files of the pasture
+    
+    # Select the correct file type based on TYPE
+    file_pattern <- if (TYPE == "catlog") "\\.csv$" else "\\.Rdata$"
+    collar_files <- list.files(collar_dir, pattern = file_pattern, full.names = TRUE)
+    
+    if (length(collar_files) == 0) {
+      warning(paste("No files found in", collar_dir, "for TYPE =", TYPE))
+      return(NULL)  # Skip processing if no files are found
+    }
+    
     lapply(collar_files, function(collar_f) {
-      collar_ID <- strsplit(basename(collar_f), split = "_")[[1]][1] # Extraction de l'id du collier (forme = C00_000000 -> C00)
-      load_catlog_data(collar_f) %>% # Cargement des données GPS brut
-        slice(which(row_number() %% 30 == 10)) %>% #Garde un point GPS tout les 30 mesures
-        mutate(ID = collar_ID, date = lubridate::format_ISO8601(date)) %>% # Convertir date et heure au bon format avec lubridate
-        vect(geom = c("lon", "lat"), crs = CRS_WSG84) # Transformation du dataframe en objet spacial (crs = WSG84)
-    }) %>% do.call(rbind, .) # Fusionne les données des différents colliers
-  }) %>% do.call(rbind, .) %>%
-    writeVector(filename = output_file, overwrite = TRUE) # Données au format GPKG
+      # Extract the collar ID based on file type
+      collar_ID <- if (TYPE == "catlog") {
+        strsplit(basename(collar_f), split = "_")[[1]][1]  # Catlog (ex: C00_000000 -> C00)
+      } else {
+        strsplit(basename(collar_f), split = "_")[[1]][1]  # OFB (ex: id3978_dombel_2013_... -> id3978)
+      }
+      
+      print(paste("Processing file:", collar_f, "Collar ID:", collar_ID))
+      
+      # Load GPS data depending on the file type
+      traject <- switch(
+        TYPE,
+        "catlog" = load_catlog_data(collar_f),
+        "ofb" = load_ofb_data_rdata(collar_f),
+        stop("Unrecognized TYPE: please choose 'catlog' or 'ofb'")
+      )
+      
+      # Skip processing if the dataset is empty
+      if (is.null(traject) || nrow(traject) == 0) {
+        warning(paste("Empty dataset after loading:", collar_f))
+        return(NULL)
+      }
+      
+      # Apply 30-minute filtering only for Catlog data
+      if (TYPE == "catlog") {
+        traject <- traject %>% slice(which(row_number() %% 30 == 10))
+      }
+      
+      # Transform and format data
+      traject <- traject %>%
+        mutate(ID = collar_ID, date = lubridate::format_ISO8601(date)) %>%
+        vect(geom = c("lon", "lat"), crs = CRS_WSG84)
+      
+      return(traject)
+    }) %>% do.call(rbind, .)  # Merge data from different collars
+  }) %>% do.call(rbind, .) -> merged_data  # Final merge across all pastures
+  
+  # Check if merged_data is empty before exporting
+  if (is.null(merged_data) || nrow(merged_data) == 0) {
+    stop("No data available to export to GPKG. Check input files and processing steps.")
+  }
+  
+  # Export to GPKG format
+  writeVector(merged_data, filename = output_file, overwrite = TRUE)
 }
-
 
 #### 2.BJONERAAS FILTER CALIBRATION ####
 #--------------------------------------#
@@ -80,7 +129,7 @@ if (F) {
   AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
   
   # L’alpage devant être traité
-  alpage = "Alpage_demo"
+  alpage = "Combe-Madame"
   
   ## SORTIE ##
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
@@ -104,14 +153,44 @@ if (F) {
     return(data) 
   }))
   
+  
+  
+  # Chargement et concaténation des données des fichiers sélectionnés
+  data <- do.call(rbind, lapply(files, function(file) { 
+    # Chargement des fichiers en fonction du TYPE
+    data <- switch(
+      TYPE,
+      "catlog" = load_catlog_data(file),
+      "ofb" = load_ofb_data_rdata(file))
+    data$ID <- basename(file)# Ajouter l'ID du fichier pour tracer son origine
+    return(data)
+  }))
+  
+  
+  
+  
+  
+  
+  
+  
+  
   # Récupération des dates de pose et de retrait du collier
   beg_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M")
   end_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M")
   data = date_filter(data, beg_date, end_date) # Filtrage des données en fonction des dates de validité
+  if (TYPE == "ofb") {
+    initial_count <- nrow(data)  # Nombre de lignes tot
+    data <- data %>% filter(!is.na(lat) & !is.na(lon))
+    removed_count <- initial_count - nrow(data)  # Nombre de lignes supprimées
+    print(paste(removed_count, "points with NA were removed. Remaining points:", nrow(data)))
+  } # FIltrage des données si TYPE = ofb
+  
+  
+  
   
   # Projection des données en Lambert93 (EPSG:2154) à partir de WGS84 (EPSG:4326)
   data_xy <- data %>%
-    terra::vect(crs="EPSG:4326") %>%
+    terra::vect(geom = c("lon", "lat"), crs = "EPSG:4326") %>% 
     terra::project("EPSG:2154") %>%
     as.data.frame(geom = "XY")
   
@@ -126,10 +205,20 @@ if (F) {
   
   ### Test de différents filtres
   # Définition des valeurs de test pour le filtre de Bjorneraas
-  medcrits = c(750, 500, 750) # Seuil médian des distances anormales
-  meancrits = c(500, 500, 350) # Seuil moyen des distances anormales
-  spikesps = c(1500, 1500, 1500) # Seuil de vitesse maximale (m/h)
-  spikecoss = c(-0.95, -0.95, -0.95) # Seuil de changement de direction (cosinus d’angle)
+  
+  # Définition des seuils en fonction du TYPE
+  if (TYPE == "catlog") {
+    medcrits <- c(750, 500, 750)  # Seuil médian des distances anormales
+    meancrits <- c(500, 500, 350) # Seuil moyen des distances anormales
+    spikesps <- c(1500, 1500, 1500)  # Seuil de vitesse maximale (m/h)
+    spikecoss <- c(-0.95, -0.95, -0.95)  # Seuil de changement de direction (cosinus d’angle)
+  } else if (TYPE == "ofb") {
+    medcrits <- c(1000, 750, 1000)  # Seuil médian des distances anormales
+    meancrits <- c(750, 750, 650) # Seuil moyen des distances anormales
+    spikesps <- c(400, 400, 400)  # Seuil de vitesse maximale (m/h)
+    spikecoss <- c(-0.95, -0.95, -0.95) } # Seuil de changement de direction (cosinus d’angle)
+ 
+  
   
   for (i in 1:length(medcrits)) {
     # Application du filtre de Bjorneraas avec chaque combinaison de paramètres
@@ -179,6 +268,7 @@ if (F) {
   # Chargement des fonctions nécessaires
   source(file.path(functions_dir, "Functions_filtering.R"))
   
+  
   ## ENTREES ##
   # Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages. Coordonnées en WSG84. Le nom des fichiers, sous la forme "ID_quelquechose.csv", sera utilisé pour déterminer l’ID du collier qui doit comporter 3 caractères.
   raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
@@ -189,7 +279,7 @@ if (F) {
   IFF_data <- read.csv(IIF, stringsAsFactors = FALSE, encoding = "UTF-8")
   
   # Les alpages à traiter
-  alpages = c("Alpage_demo")
+  alpages = c("Viso")
   
   ## SORTIES ##
   filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
@@ -206,8 +296,10 @@ if (F) {
   
   for (alpage in alpages) {
     print(paste("WORKING ON ALPAGE", alpage))
-    collar_dir <- file.path(raw_data_dir, alpage)
-    collar_files <- list.files(collar_dir, pattern = ".csv", full.names = TRUE)
+    # Définition du pattern de fichier en fonction du TYPE
+    file_pattern <- if (TYPE == "catlog") "\\.csv$" else "\\.Rdata$"
+    collar_dir <- file.path(raw_data_dir, alpage) # Construction du chemin des fichiers GPS de l'alpage
+    collar_files <- list.files(collar_dir, pattern = file_pattern, full.names = TRUE)# Liste des fichiers correspondant au TYPE
     
     medcrit = get_alpage_info(alpage, AIF, "medcrit")
     meancrit = get_alpage_info(alpage, AIF, "meancrit")
@@ -216,6 +308,9 @@ if (F) {
     print(paste0("Bjorneraas filter parameters: medcrit=",medcrit,", meancrit=", meancrit, ", spikesp=", spikesp, ", spikecos=", spikecos))
     print(collar_files)
     
+    
+    
+    ######### TRAVAUX : Adapatation avec OFB : Combe-Madame 2013 ##########
     
     # Filtrage des trajectoires et calcul des indicateurs
     indicators <- lapply(collar_files, function(collar) {
@@ -241,6 +336,112 @@ if (F) {
     write.table(indicators, file=indicator_file, append = T, sep=',', row.names=F, col.names=F)
   }
 }
+
+    ######### FIN TRAVAUX : Adapatation avec OFB : Combe-Madame 2013 
+
+
+
+
+
+
+
+
+
+
+
+#### 3.Bis FILTERING OFB DATA####
+#-----------------------------------#
+
+# Partie temporère se basant sur les données deja prélablement filtrés par l'OFB
+# utilisant aussi le filtre de Bjorneraas. Mais dont les paramètres sont adaptés
+# a un temp d'aquisition toutes les 30 minutes ! 
+
+
+if (TYPE == "ofb"){
+ ## ENTREES ##
+ # Un dossier contenant les trajectoires brutes, au format Rdata issu des colliers OFB,
+ # rangées dans des sous-dossiers au nom de leurs alpages
+ raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
+
+ # Un data.frame contenant les dates de pose et de retrait des colliers
+ # Doit contenir les colonnes "alpage", "date_pose" et "date_retrait"
+ AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
+
+ # Vérification du format du fichier (souvent mal formaté, attention csv UTF8)
+ AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
+ 
+ ## SORTIES ##
+ # Dossier de sortie "Filtre_de_Bjorneraas: 
+ 
+ filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
+ if (!dir.exists(filter_output_dir)) {
+   dir.create(filter_output_dir, recursive = TRUE)
+ }
+
+ # Un .RDS contenant les trajectoires filtrées (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment). Coordonnées en Lambert93.
+ output_rds_file = file.path(filter_output_dir, paste0("Catlog_",YEAR,"_filtered_",alpages,".rds"))
+
+
+
+ ## CODE ##
+ files <- list.files(file.path(raw_data_dir, alpage), full.names = TRUE)
+
+ data <- do.call(rbind, lapply(files, function(file) { 
+   # Chargement des fichiers en fonction du TYPE
+   data <-load_ofb_data_rdata(file)
+   data$ID <- basename(file)# Ajouter l'ID du fichier pour tracer son origine
+   return(data)
+ }))
+
+
+ # Récupération des dates de pose et de retrait du collier
+ beg_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M")
+ end_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M")
+ data = date_filter(data, beg_date, end_date) # Filtrage des données en fonction des dates de validité
+
+ #Supprime les NA
+
+ initial_count <- nrow(data)  # Nombre de lignes tot
+ data <- data %>% filter(!is.na(lat) & !is.na(lon))
+ removed_count <- initial_count - nrow(data)  # Nombre de lignes supprimées
+ print(paste(removed_count, "points with NA were removed. Remaining points:", nrow(data)))
+
+ # Supprime les lignes où infoloc == "pb_bjorneraas"
+ 
+ initial_count <- nrow(data)  # Mise à jour du nombre total avant ce filtre
+ data <- data %>% filter(infoloc != "pb_bjorneraas")
+ removed_bjorneraas_count <- initial_count - nrow(data)  # Nombre de lignes supprimées (pb_bjorneraas)
+ print(paste(removed_bjorneraas_count, "points with location issues (pb_bjorneraas) were removed. Remaining points:", nrow(data)))
+ 
+ 
+ 
+ 
+ 
+ # Transformation des colonnes avant enregistrement pour s'adapter a la sortie CATLOG
+ data <- data %>%
+   rename(time = date) %>%  # Renomme 'date' en 'time'
+   mutate(
+     ID = sub("_.*", "", ID),  # Garde uniquement la partie avant "_" dans ID
+     alpage = alpage,          # Ajoute une colonne 'alpage' remplie avec la valeur de l'objet alpage
+     species = "brebis",        # Ajoute une colonne 'species' remplie avec "brebis"
+     race = "Merinos"
+   ) %>%
+   dplyr::select(-infoloc)  # Supprime la colonne 'infoloc'
+ 
+ 
+ # Enregistrement des données filtrées au format .RDS
+ saveRDS(data, output_rds_file)
+ 
+ 
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -279,6 +480,275 @@ if (F) {
   # Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
   output_rds_file = file.path(output_dir, "HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
   
+  
+  
+  
+  ### LOADING DATA FOR ANALYSES
+  data = readRDS(input_rds_file)
+  data = data[data$species == "brebis",]
+  data = data[data$alpage %in% alpages,]
+  
+  
+  
+  ### ATTENTION DEGRADATION A 30 MIN DU JEU DE DONNEES 2 MIN
+  
+  # Sous-échantillonnage : garder un point toutes les 30 minutes
+  data <- data %>%
+    arrange(ID, time) %>%  # Trier les données par individu et temps
+    group_by(ID) %>%
+    filter(row_number() %% 15 == 1) %>%  # Garde 1 point toutes les 15 mesures (si acquisition toutes les 2 min)
+    ungroup()
+  
+  
+  print(nrow(data))  # Vérifier le nombre de lignes
+  print(unique(data$ID))  # Vérifier les identifiants uniques
+  print(table(data$ID))  # Vérifier le nombre d'observations par ID
+  
+  
+  
+  
+  # Définition de l'objet SAMPLING
+  SAMPLING <- 30
+  sampling_parameters <- get_sampling_parameters()
+  
+  
+  ### HMM FIT
+  run_parameters = list(
+    # Model
+    model = "HMM",
+    
+    # Resampling
+    resampling_ratio = sampling_parameters$resampling_ratio,
+    resampling_first_index = 0,
+    rollavg = FALSE,
+    rollavg_convolution = c(0.15, 0.7, 0.15),
+    knownRestingStates = FALSE,
+    
+    # Observation distributions (step lengths and turning angles)
+    dist = list(step = "gamma", angle = "vm"),
+    # Design matrices to be used for the probability distribution parameters of each data stream
+    DM = list(angle=list(mean = ~1, concentration = ~1)),
+    # Covariants formula
+    covariants = ~cos(hour*3.141593/12), # ~1 if no covariants used
+    
+    # 3-state HMM
+    Par0 = list(step = c(10, 25, 50, 10, 15, 40), angle = c(tan(pi/2), tan(0/2), tan(0/2), log(0.5), log(0.5), log(3))),
+    fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
+  )
+  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters)
+  
+  startTime = Sys.time()
+  results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 1800, output_dir)
+  
+  
+  
+  
+  
+  
+  gc(endTime = Sys.time()
+  # Verifié la connéxion intenert 
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+#### 4. HMM FITTING #### 
+#----------------------#
+if (F) {
+  library(snow)
+  library(stats)
+  # Movement modelling packages
+  library(momentuHMM)
+  library(adehabitatLT)
+  library(adehabitatHR)
+  # Libraries RMarkdown
+  library(knitr)
+  library(rmarkdown)
+  source(file.path(functions_dir, "Functions_HMM_fitting.R"))
+  
+  # ENTREES
+  # Un .RDS contenant les trajectoires filtrées
+  input_rds_file <- file.path(output_dir, "Filtre_de_Bjorneraas", paste0("Catlog_", YEAR, "_filtered_", alpage, ".rds"))
+  
+  # Un data.frame contenant la correspondance entre colliers et alpages. Doit contenir les colonnes  "ID", "Alpage" et "Periode d’echantillonnage"
+  individual_info_file <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"), paste0(YEAR, "_colliers_poses.csv"))
+  individual_info_file_data <- read.csv(individual_info_file, stringsAsFactors = FALSE, encoding = "UTF-8")
+  # Les alpages à traiter
+  alpages = ALPAGES
+  
+  # SORTIES
+  
+  # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
+  filter_output_dir <- file.path(output_dir, "HMM_comportement")
+  if (!dir.exists(filter_output_dir)) {
+    dir.create(filter_output_dir, recursive = TRUE)
+  }
+  # Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
+  output_rds_file = file.path(output_dir, "HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
+  
+  
+  #Function 
+  
+  ### HMM fitting and plotting functions
+  hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
+    # Fit a momentuHMM hmm on one individual’s sub-trajectories and save the resulting figures.
+    # INPUTS :
+    #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
+    #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
+    #   alpage_directory : a directory to save the resulting figures of this individual’s hmm fit
+    # OUTPUT : the momemtuHMM object, with a $data field containing the original trajectory (or sub-trajectories), ordered by time,
+    #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
+    
+    ### DATA PREPARATION
+    ID = data$ID[1]
+    data_hmm <- regularise_trajectories(data, sampling_period)
+    if (runPar$rollavg) data_hmm <- rolling_averaging_trajectories(data_hmm, conv= runPar$rollavg_convolution)
+    data_hmm <- resample_trajectories(data_hmm, runPar$resampling_ratio, runPar$resampling_first_index)
+    data_hmm <- prepare_hmm_trajectories(data_hmm)
+    
+    knownStates <- rep(NA, nrow(data_hmm))
+    
+    if(runPar$knownRestingStates) { # if we consider some resting states to be known, then the first and last half-hours of record period are considered to be resting states
+      knownStates[(data_hmm$hour > 3 && data_hmm$hour < 3.5) || (data_hmm$hour > 20.5 && data_hmm$hour < 21 )] <- 1
+    }
+    
+    ### MODEL FITTING
+    stateNames = c("Repos", "Paturage", "Deplacement")
+    run <- fitHMM(data_hmm, nbStates = 3, dist = runPar$dist, DM=runPar$DM, Par0 = runPar$Par0,
+                  estAngleMean=list(angle=TRUE), fixPar = runPar$fixPar,
+                  stateNames = stateNames,
+                  knownStates = knownStates,
+                  formula = runPar$covariants,
+                  optMethod = "Nelder-Mead")
+    
+    # Get the most likely states and their probabilities
+    run$data$state <- viterbi(run)
+    state_proba = stateProbs(run)
+    run$data$state_proba = NA
+    for (i in 1:nrow(run$data)) { run$data$state_proba[i] = state_proba[i, run$data$state[i]] }
+    
+    # Plot HMM results and trajectories
+    dir.create(paste0(alpage_directory,"individual_trajectories/"), recursive = TRUE)
+    plot_results(run, paste0(alpage_directory,"individual_trajectories/",ID))
+    
+    # Remove NA
+    run$data <- run$data[!is.na(run$data$x),]
+    # Reorder data by time
+    run$data <- run$data[order(run$data$time),]
+    
+    # Restore original ID
+    run$data$ID <- ID
+    
+    return(run)
+  }
+  
+  
+  
+  par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
+    # Paralelized wrapper for hmm_fit
+    # Fit a momentuHMM hmm on one several individuals’ trajectories and save the resulting figures.
+    # INPUTS :
+    #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
+    #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
+    #   individual_info_file : path to the csv file containing information about every individual ID, must contain "ID", "Alpage" and "Periode d’echantillonnage" columns.
+    # OUTPUT : a list of the individual’s momentuHMM objects. Each momentuHMM object’s $data field contains the original trajectory (or sub-trajectories), ordered by time,
+    #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
+    
+    print(paste0("+++ momentuHMM parallel RUN +++"))
+    
+    startTime <- Sys.time()
+    clus <- makeCluster(ncores, outfile='') # outfile='' is verbose option
+    clusterExport(clus, as.list(lsf.str(.GlobalEnv))) # export all loaded functions
+    clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
+    # Load libraries
+    clusterCall(clus, function() {
+      options(warn=-1)
+      # For the pipes
+      suppressPackageStartupMessages(library(tidyverse)) # includes ggplot2 and dplyr among others
+      theme_set(theme_bw()) # theme for ggplot2
+      library(lubridate)
+      # Movement modelling packages
+      library(momentuHMM)
+      # library(foieGras)
+      library(adehabitatLT)
+      # GIS packages
+      library(sf)
+      library(sp)
+      library(terra)
+      # Load functions and set paths
+      source("Functions/Functions_utility.R") # Courtesy Théo Michelot
+      BACKGROUND_TYPE = "BDALTI"
+      source("Functions/Functions_map_plot.R")
+      source("Functions/Constants.R")
+      options(warn=0)
+    })
+    
+    results <- parLapply(clus, unique(data$ID),
+                         function(ID) {
+                           alpage = get_individual_alpage(ID, individual_info_file)
+                           
+                           # 🔍 Debugging : Vérifier si l'alpage est bien "alpage_demo"
+                           print(paste0("🔍 ID: ", ID, " - Alpage récupéré : ", alpage))
+                           
+                           sampling_period = get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+                           
+                           return(hmm_fit(data[data$ID==ID,], run_parameters, paste0(output_dir, alpage, "/"), sampling_period))
+                         }
+    )
+    
+    stopCluster(clus)
+    endTime <- Sys.time()
+    print(paste("+++ Cluster total excecution time :", round(difftime(endTime, startTime, units='mins'),2), "min +++"))
+    
+    return(results)
+  }
+  
+  
+  
+  
+  
+  
+  scale_step_parameters_to_resampling_ratio <- function(run_parameters) {
+    run_parameters$Par0$step[2] = run_parameters$resampling_ratio * run_parameters$Par0$step[2]
+    run_parameters$Par0$step[5] = sqrt(run_parameters$resampling_ratio) * run_parameters$Par0$step[5]
+    run_parameters$Par0$step[3] = run_parameters$resampling_ratio * run_parameters$Par0$step[3]
+    run_parameters$Par0$step[6] = sqrt(run_parameters$resampling_ratio) * run_parameters$Par0$step[6]
+    
+    return(run_parameters)
+  }
+  
+  
+  
+  #NOUVELLE FUNCTION
+  
+  # Définition d'un objet SAMPLING pour une gestion modulaire
+  get_sampling_parameters <- function(sampling_period) {
+    if (sampling_period < 10) {
+      resampling_ratio <- ceiling(10 / sampling_period)  # On ramène à 10 min
+      param_scaling_factor <- 10 / 2  # Facteur basé sur 2 min vers 10 min
+    } else {
+      resampling_ratio <- 1  # Pas de rééchantillonnage
+      param_scaling_factor <- sampling_period / 2  # Échelle basée sur 2 min
+    }
+    return(list(sampling_period = sampling_period, resampling_ratio = resampling_ratio, param_scaling_factor = param_scaling_factor))
+  }
+  
+  
+  
+  
+  
+  
+  
   ### LOADING DATA FOR ANALYSES
   data = readRDS(input_rds_file)
   data = data[data$species == "brebis",]
@@ -314,31 +784,21 @@ if (F) {
   endTime = Sys.time()
   # Verifié la connéxion intenert 
   
-  
-  ##SUMMARIZE MODEL FITTING BY ALPAGE in rmarkdown PDFs (A revoir)
-  parameters_df <- parameters_to_data.frame(run_parameters)
-  
-  
-  # A revoir !
-  individual_IDs <- sapply(results, function(hmm) hmm$data$ID[1])
-  individual_alpages <- get_individual_alpage(individual_IDs, individual_info_file)
-  for (alpage in unique(individual_alpages)) {
-    res_index  <- individual_alpages == alpage
-    data_alpage <- do.call("rbind", lapply(results[res_index], function(result) result$data))
-    results_df <- do.call("rbind", lapply(results[res_index], hmm_result_to_data.frame))
-    
-    runs_to_pdf_2(alpage, parameters_df, results_df, data_alpage , 
-                paste(round(difftime(endTime, startTime, units='mins'),2), "min"), 
-                output_dir, 
-                file.path(output_dir, "HMM_comportement", paste0("HMM_fitting_", YEAR, "_", alpage, ".pdf")), 
-                show_performance_indicators = FALSE)
-  }
-  # A revoir ! : fonction Functions/HMM_fit_template.Rmd does not exist
-  
-  ### SAVE RESULTING TRAJECTORIES
-  data_hmm <- do.call("rbind", lapply(results, function(result) result$data))
-  viterbi_trajectory_to_rds(data_hmm, output_rds_file, individual_info_file)
+
+
+
+
+
 }
+
+
+
+
+
+
+
+
+
 
 
 
