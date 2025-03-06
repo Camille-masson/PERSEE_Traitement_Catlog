@@ -7,17 +7,24 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse
-YEAR <- 2022
+YEAR <- 2021
 TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-SAMPLING <- 2
-alpage <- "Viso"
-alpages <- "Viso"
+alpage <- "Sept-Laux"
+alpages <- "Sept-Laux"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
   "2013" = c("Combe-Madame"),
-  "2022" = c("Ane-et-Buyant", "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"),
-  "2023" = c("Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"),
+  "2014" = c("Combe-Madame"),
+  "2015" = c("Combe-Madame"),
+  "2016" = c("Combe-Madame"),
+  "2017" = c("Combe-Madame"),
+  "2018" = c("Ane-et-Buyant", "Bedina", "Pesee", "Sept-Laux"),
+  "2019" = c("Ane-et-Buyant", "Bedina", "Pesee", "Sept-Laux"),
+  "2020" = c("Ane-et-Buyant", "Bedina", "Pesee","Rieuxclaret", "Sept-Laux"),
+  "2021" = c("Ane-et-Buyant", "Bedina", "Pesee","Combe-Madame", "Sept-Laux"),
+  "2022" = c("Ane-et-Buyant", "Bedina", "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas","Pesee", "Sanguiniere","Sept-Laux", "Viso"),
+  "2023" = c("Ane-et-Buyant", "Bedina", "Cayolle", "Crouzet", "Combe", "Combe-Madame", "Grande-Cabane", "Lanchatra", "Pesee", "Rouanette", "Sanguiniere", "Sept-Laux", "Vacherie-de-Roubion", "Viso"),
   "2024" = c("Viso", "Cayolle", "Sanguiniere")
 )
 ALPAGES <- ALPAGES_TOTAL[[as.character(YEAR)]]
@@ -34,9 +41,6 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   ## ENTREE ##
   # Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages
   raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
-  
-  # Les alpage devant être traité
-  alpages <- c("Combe-Madame")
   
   ## SORTIE ##
   
@@ -482,7 +486,6 @@ if (F) {
   
   
   
-  
   ### LOADING DATA FOR ANALYSES
   data = readRDS(input_rds_file)
   data = data[data$species == "brebis",]
@@ -490,19 +493,32 @@ if (F) {
   
   
   
-  ### ATTENTION DEGRADATION A 30 MIN DU JEU DE DONNEES 2 MIN
+  ### ⚠️ ATTENTION DEGRADATION A 30 MIN DU JEU DE DONNEES 2 MIN
   
-  # Sous-échantillonnage : garder un point toutes les 30 minutes
-  data <- data %>%
-    arrange(ID, time) %>%  # Trier les données par individu et temps
-    group_by(ID) %>%
-    filter(row_number() %% 15 == 1) %>%  # Garde 1 point toutes les 15 mesures (si acquisition toutes les 2 min)
-    ungroup()
+  # Suppression des données collectées entre 21h et 3h
+  library(lubridate)
+  data = data[!(hour(data$time) >= 21 | hour(data$time) < 3), ]
+  
+
+  {
+  degradation = 15
+  first_index = 0
   
   
-  print(nrow(data))  # Vérifier le nombre de lignes
-  print(unique(data$ID))  # Vérifier les identifiants uniques
-  print(table(data$ID))  # Vérifier le nombre d'observations par ID
+  if (degradation == 1) {
+    data_resamp <- data
+  } else {
+    data_resamp = data.frame()
+    for(id in unique(data$ID)) {
+      indices = which(data$ID==id)
+      data_resamp = rbind(data_resamp, data[indices[seq(first_index, length(indices), degradation)] ,])
+    }
+  }
+  
+ 
+}
+  data <- data_resamp
+
   
   
   
@@ -535,22 +551,41 @@ if (F) {
     Par0 = list(step = c(10, 25, 50, 10, 15, 40), angle = c(tan(pi/2), tan(0/2), tan(0/2), log(0.5), log(0.5), log(3))),
     fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
   )
-  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters)
+  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters, alpage)
+  
+  
+  
+  
   
   startTime = Sys.time()
   results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 1800, output_dir)
-  
-  
-  
-  
-  
-  
-  gc(endTime = Sys.time()
+  endTime = Sys.time()
   # Verifié la connéxion intenert 
 
 
-}
 
+
+# A revoir !
+individual_IDs <- sapply(results, function(hmm) hmm$data$ID[1])
+individual_alpages <- get_individual_alpage(individual_IDs, individual_info_file)
+for (alpage in unique(individual_alpages)) {
+  res_index  <- individual_alpages == alpage
+  data_alpage <- do.call("rbind", lapply(results[res_index], function(result) result$data))
+  results_df <- do.call("rbind", lapply(results[res_index], hmm_result_to_data.frame))
+  
+  runs_to_pdf_2(alpage, parameters_df, results_df, data_alpage , 
+                paste(round(difftime(endTime, startTime, units='mins'),2), "min"), 
+                output_dir, 
+                file.path(output_dir, "HMM_comportement", paste0("HMM_fitting_", YEAR, "_", alpage, ".pdf")), 
+                show_performance_indicators = FALSE)
+}
+# A revoir ! : fonction Functions/HMM_fit_template.Rmd does not exist
+
+### SAVE RESULTING TRAJECTORIES
+data_hmm <- do.call("rbind", lapply(results, function(result) result$data))
+viterbi_trajectory_to_rds(data_hmm, output_rds_file, individual_info_file)
+
+}
 
 
 
@@ -749,10 +784,33 @@ if (F) {
   
   
   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   ### LOADING DATA FOR ANALYSES
   data = readRDS(input_rds_file)
   data = data[data$species == "brebis",]
   data = data[data$alpage %in% alpages,]
+  
+  
+ 
   
   ### HMM FIT
   run_parameters = list(
@@ -760,7 +818,7 @@ if (F) {
     model = "HMM",
     
     # Resampling
-    resampling_ratio = 5,
+    resampling_ratio = 15,
     resampling_first_index = 0,
     rollavg = FALSE,
     rollavg_convolution = c(0.15, 0.7, 0.15),
@@ -778,6 +836,9 @@ if (F) {
     fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
   )
   run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters)
+  
+  print(paste0("Par0 Step après Scaling : ", run_parameters$Par0$step))
+  
   
   startTime = Sys.time()
   results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 120, output_dir)

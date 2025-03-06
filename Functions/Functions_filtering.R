@@ -49,8 +49,6 @@ load_ofb_data  <- function(input_file) {
 
 
 
-
-
 load_ofb_data_rdata <- function(input_file) {
   # INPUT :
   #     input_file : path to an .Rdata file containing an OFB trajectory
