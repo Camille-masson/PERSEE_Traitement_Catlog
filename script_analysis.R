@@ -5,6 +5,8 @@ gc()
 
 # Chargement de la configuration
 source("config.R")
+source(file.path(functions_dir, "Functions_filtering.R")) 
+
 
 # Définition de l'année d'analyse
 YEAR <- 2021
@@ -30,8 +32,37 @@ ALPAGES_TOTAL <- list(
 ALPAGES <- ALPAGES_TOTAL[[as.character(YEAR)]]
 
 
+# Définition de la période d'échantillionage
+
+## ENTREE ##
+# Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages
+
+
+
+## SORTIE ##
+
+# Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
+filter_output_dir <- file.path(output_dir, "Sampling_Periods")
+if (!dir.exists(filter_output_dir)) {
+  dir.create(filter_output_dir, recursive = TRUE)
+}
+
+# Fichier pdf de sortie pour visualisation du sampling_periode
+pdf(file.path(filter_output_dir, paste0("Sampling_Periods_", YEAR, "_", alpage, ".pdf")), width = 9, height = 9)
+
+# Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
+output_rds_file = file.path(output_dir, "Sampling_Periods", paste0("Sampling_periods_",YEAR,"_",alpage,".rds"))
+
+
+sampling_periods <- identify_sampling_period(data_dir, YEAR, TYPE, alpages, output_dir)
+
+print(sampling_periods)
+
+
+
 #### 1. Simplification en GPKG ####
 #----------------------------------#
+
 
 
 if (FALSE) {  # Mettre TRUE pour exécuter
@@ -39,44 +70,47 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   source(file.path(functions_dir, "Functions_filtering.R"))
   
   ## ENTREE ##
-  # Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages
+  # Un dossier contenant les trajectoires brutes
   raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
   
-  ## SORTIE ##
+  # Charger le fichier des périodes d'échantillonnage
+  sampling_period_file <- file.path(output_dir, "Sampling_Periods", paste0("Sampling_Periods_", YEAR, "_", alpage, ".rds"))
+  sampling_periods <- readRDS(sampling_period_file)
   
-  # Création du sous-dossier de sortie : GPS_simple_GPKG
+  ## SORTIE ##
+  # Création du sous-dossier de sortie
   gps_output_dir <- file.path(output_dir, "GPS_simple_GPKG")
   if (!dir.exists(gps_output_dir)) {
     dir.create(gps_output_dir, recursive = TRUE)
   }
-  # Créeation du GPKG de sortie nommé : Donnees_brutes_9999_Alpage_demo_simplifiees.gpkg
+  
+  # Nom du fichier de sortie
   output_file <- file.path(gps_output_dir, paste0("Donnees_brutes_", YEAR, "_", alpages, "_simplifiees.gpkg"))
   
-  
-  
+  # Traitement des fichiers par alpage
   lapply(alpages, function(alpage) {
-    collar_dir <- file.path(raw_data_dir, alpage)  # GPS folder path containing the files of the pasture
+    collar_dir <- file.path(raw_data_dir, alpage)
     
-    # Select the correct file type based on TYPE
+    # Sélection du type de fichier
     file_pattern <- if (TYPE == "catlog") "\\.csv$" else "\\.Rdata$"
     collar_files <- list.files(collar_dir, pattern = file_pattern, full.names = TRUE)
     
     if (length(collar_files) == 0) {
       warning(paste("No files found in", collar_dir, "for TYPE =", TYPE))
-      return(NULL)  # Skip processing if no files are found
+      return(NULL)
     }
     
     lapply(collar_files, function(collar_f) {
-      # Extract the collar ID based on file type
+      # Extraction de l'ID du collier
       collar_ID <- if (TYPE == "catlog") {
-        strsplit(basename(collar_f), split = "_")[[1]][1]  # Catlog (ex: C00_000000 -> C00)
+        strsplit(basename(collar_f), split = "_")[[1]][1]
       } else {
-        strsplit(basename(collar_f), split = "_")[[1]][1]  # OFB (ex: id3978_dombel_2013_... -> id3978)
+        strsplit(basename(collar_f), split = "_")[[1]][1]
       }
       
       print(paste("Processing file:", collar_f, "Collar ID:", collar_ID))
       
-      # Load GPS data depending on the file type
+      # Charger les données GPS
       traject <- switch(
         TYPE,
         "catlog" = load_catlog_data(collar_f),
@@ -84,34 +118,57 @@ if (FALSE) {  # Mettre TRUE pour exécuter
         stop("Unrecognized TYPE: please choose 'catlog' or 'ofb'")
       )
       
-      # Skip processing if the dataset is empty
+      # Vérifier si les données sont vides
       if (is.null(traject) || nrow(traject) == 0) {
         warning(paste("Empty dataset after loading:", collar_f))
         return(NULL)
       }
       
-      # Apply 30-minute filtering only for Catlog data
-      if (TYPE == "catlog") {
-        traject <- traject %>% slice(which(row_number() %% 30 == 10))
+      # Récupérer le sampling_period pour ce collier
+      sampling_period <- sampling_periods %>%
+        filter(ID == collar_ID) %>%
+        pull(SAMPLING)
+      
+      # Si aucun sampling_period trouvé, erreur
+      if (length(sampling_period) == 0 || is.na(sampling_period)) {
+        stop(paste("ERREUR: Aucun sampling_period trouvé pour le collier", collar_ID))
       }
       
-      # Transform and format data
+      # Ajustement vers un échantillonnage de 30 minutes
+      if (sampling_period != 30) {
+        print(paste("Collar", collar_ID, "has sampling_period =", sampling_period, "minutes. Resampling to 30 minutes."))
+        
+        # Calcul du facteur de réduction
+        reduction_factor <- round(30 / sampling_period)
+        
+        # Application du filtre
+        traject <- traject %>% slice(which(row_number() %% reduction_factor == 1))
+      }
+      
+      # Transformation et formatage des données
       traject <- traject %>%
         mutate(ID = collar_ID, date = lubridate::format_ISO8601(date)) %>%
         vect(geom = c("lon", "lat"), crs = CRS_WSG84)
       
       return(traject)
-    }) %>% do.call(rbind, .)  # Merge data from different collars
-  }) %>% do.call(rbind, .) -> merged_data  # Final merge across all pastures
+    }) %>% do.call(rbind, .)  # Fusionner les données des colliers d'un même alpage
+  }) %>% do.call(rbind, .) -> merged_data  # Fusion finale pour tous les alpages
   
-  # Check if merged_data is empty before exporting
+  # Vérifier si les données fusionnées sont vides
   if (is.null(merged_data) || nrow(merged_data) == 0) {
     stop("No data available to export to GPKG. Check input files and processing steps.")
   }
   
-  # Export to GPKG format
+  # Exporter les données vers un fichier GPKG
   writeVector(merged_data, filename = output_file, overwrite = TRUE)
 }
+
+
+
+
+
+
+
 
 #### 2.BJONERAAS FILTER CALIBRATION ####
 #--------------------------------------#
@@ -132,8 +189,6 @@ if (F) {
   # Vérification du format du fichier (souvent mal formaté, attention csv UTF8)
   AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
   
-  # L’alpage devant être traité
-  alpage = "Combe-Madame"
   
   ## SORTIE ##
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
@@ -281,9 +336,6 @@ if (F) {
   
   #Load and vérife data collier pose (format)
   IFF_data <- read.csv(IIF, stringsAsFactors = FALSE, encoding = "UTF-8")
-  
-  # Les alpages à traiter
-  alpages = c("Viso")
   
   ## SORTIES ##
   filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
@@ -471,6 +523,14 @@ if (F) {
   # Un data.frame contenant la correspondance entre colliers et alpages. Doit contenir les colonnes  "ID", "Alpage" et "Periode d’echantillonnage"
   individual_info_file <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"), paste0(YEAR, "_colliers_poses.csv"))
   individual_info_file_data <- read.csv(individual_info_file, stringsAsFactors = FALSE, encoding = "UTF-8")
+  
+  
+  # Charger le fichier des périodes d'échantillonnage
+  sampling_period_file <- file.path(output_dir, "Sampling_Periods", paste0("Sampling_Periods_", YEAR, "_", alpage, ".rds"))
+  sampling_periods <- readRDS(sampling_period_file)
+  
+  
+  
   # Les alpages à traiter
   alpages = ALPAGES
   
@@ -493,8 +553,10 @@ if (F) {
   
   
   
-  ### ⚠️ ATTENTION DEGRADATION A 30 MIN DU JEU DE DONNEES 2 MIN
   
+  
+  ### ⚠️⚠️ ATTENTION DEGRADATION A 30 MIN DU JEU DE DONNEES 2 MIN ⚠️⚠️
+  {
   # Suppression des données collectées entre 21h et 3h
   library(lubridate)
   data = data[!(hour(data$time) >= 21 | hour(data$time) < 3), ]
@@ -516,12 +578,12 @@ if (F) {
   }
   
  
-}
+  }
+  
   data <- data_resamp
 
-  
-  
-  
+  ### ⚠️⚠️ FIN DE DE LA PARTIE DEGRADATION ⚠️⚠️
+  }
   
   # Définition de l'objet SAMPLING
   SAMPLING <- 30
@@ -551,7 +613,7 @@ if (F) {
     Par0 = list(step = c(10, 25, 50, 10, 15, 40), angle = c(tan(pi/2), tan(0/2), tan(0/2), log(0.5), log(0.5), log(3))),
     fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
   )
-  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters, alpage)
+  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters, alpage, sampling_parameters)
   
   
   
@@ -559,12 +621,13 @@ if (F) {
   
   startTime = Sys.time()
   results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 1800, output_dir)
+  
   endTime = Sys.time()
   # Verifié la connéxion intenert 
 
 
 
-
+ 
 # A revoir !
 individual_IDs <- sapply(results, function(hmm) hmm$data$ID[1])
 individual_alpages <- get_individual_alpage(individual_IDs, individual_info_file)

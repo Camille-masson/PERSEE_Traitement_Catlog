@@ -87,11 +87,276 @@ load_ofb_data_rdata <- function(input_file) {
   # Conversion de la colonne date en format POSIXct
   traject$date <- as.POSIXct(traject$date, tz="GMT", format="%Y-%m-%d %H:%M:%S")
   
+  # Conversion des colonnes lat, lon et Altitude en numérique si nécessaire
+  cols_to_convert <- c("lat", "lon", "Altitude")
+  
+  for (col in cols_to_convert) {
+    if (!is.numeric(traject[[col]])) {
+      warning(paste("Conversion de", col, "en numérique pour", input_file))
+      traject[[col]] <- as.numeric(as.character(traject[[col]]))
+    }
+  }
+  
   # Sélection des colonnes pertinentes (adapter si besoin)
   traject <- traject %>% dplyr::select(lat, lon, Altitude, x, y, date, infoloc)
   
   return(traject)
 }
+
+
+
+
+
+identify_sampling_period <- function(data_dir, YEAR, TYPE, alpages) {
+  # Définition du dossier contenant les trajectoires brutes
+  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
+  
+  # Appliquer le traitement sur chaque alpage
+  sampling_results <- lapply(alpages, function(alpage) {
+    collar_dir <- file.path(raw_data_dir, alpage)  # Dossier GPS contenant les fichiers du pâturage
+    
+    # Sélection des fichiers selon le type
+    file_pattern <- if (TYPE == "catlog") "\\.csv$" else "\\.Rdata$"
+    collar_files <- list.files(collar_dir, pattern = file_pattern, full.names = TRUE)
+    
+    if (length(collar_files) == 0) {
+      warning(paste("No files found in", collar_dir, "for TYPE =", TYPE))
+      return(NULL)  # Skip processing if no files are found
+    }
+    
+    # Appliquer la détection du sampling period sur chaque fichier
+    lapply(collar_files, function(collar_f) {
+      collar_ID <- if (TYPE == "catlog") {
+        strsplit(basename(collar_f), split = "_")[[1]][1]
+      } else {
+        strsplit(basename(collar_f), split = "_")[[1]][1]
+      }
+      
+      print(paste("Processing file:", collar_f, "Collar ID:", collar_ID))
+      
+      # Charger les données
+      traject <- switch(
+        TYPE,
+        "catlog" = load_catlog_data(collar_f),
+        "ofb" = load_ofb_data_rdata(collar_f),
+        stop("Unrecognized TYPE: please choose 'catlog' or 'ofb'")
+      )
+      
+      # Vérifier que la colonne 'date' existe
+      if (!"date" %in% names(traject)) {
+        stop(paste("ERREUR: les données du collier", collar_ID, "ne contiennent pas de colonne 'date'"))
+      }
+      
+      # Convertir 'date' en format datetime
+      traject$date <- as.POSIXct(traject$date, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      traject <- traject[order(traject$date), ]
+      
+      # Calculer les différences de temps en secondes
+      time_diffs <- diff(as.numeric(traject$date))
+      print(paste("Time diffs for", collar_ID, ":", paste(head(time_diffs, 20), collapse = ", ")))  # Debug
+      
+      if (length(time_diffs) == 0) {
+        stop(paste("ERREUR: Aucune différence de temps calculée pour le collier", collar_ID, "- Vérifiez les données !"))
+      }
+      
+      # Filtrer les valeurs aberrantes (> 95e percentile)
+      threshold <- quantile(time_diffs, 0.95, na.rm = TRUE)
+      time_diffs <- time_diffs[time_diffs <= threshold]
+      
+      if (length(time_diffs) == 0) {
+        stop(paste("ERREUR: Aucune donnée valide après filtrage pour le collier", collar_ID, "- Vérifiez les données !"))
+      }
+      
+      # Définition des bornes pour l'histogramme
+      min_time <- min(time_diffs, na.rm = TRUE)
+      max_time <- max(time_diffs, na.rm = TRUE)
+      
+      # Correction de l'histogramme
+      if (min_time == max_time) {
+        warning(paste("Tous les points sont espacés de", min_time, "secondes pour le collier", collar_ID, "- Histogramme inutile."))
+        mode_interval <- min_time
+      } else {
+        breaks_seq <- seq(min_time, max_time, length.out = 30)
+        hist_vals <- hist(time_diffs, breaks = breaks_seq, plot = FALSE)
+        mode_interval <- hist_vals$breaks[which.max(hist_vals$counts)]  # Intervalle dominant
+      }
+      
+      # Convertir en minutes et arrondir à la minute la plus proche
+      sampling_period_min <- round(mode_interval / 60)
+      sampling_period_min <- max(sampling_period_min, 1)
+      
+      # Retourner les résultats
+      list(
+        ID = collar_ID,
+        SAMPLING = sampling_period_min,
+        sampling_period = sampling_period_min * 60
+      )
+    })
+  })
+  
+  # Convertir les résultats en data.frame
+  sampling_periods <- do.call(rbind, lapply(sampling_results, function(x) if (!is.null(x)) do.call(rbind, lapply(x, data.frame))))
+  
+  return(sampling_periods)
+}
+
+
+
+
+
+
+
+
+
+
+identify_sampling_period <- function(data_dir, YEAR, TYPE, alpages, output_dir) {
+  # Définition du dossier contenant les trajectoires brutes
+  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
+  
+  # Création du dossier de sortie s'il n'existe pas
+  filter_output_dir <- file.path(output_dir, "Sampling_Periods")
+  if (!dir.exists(filter_output_dir)) {
+    dir.create(filter_output_dir, recursive = TRUE)
+  }
+  
+  # Appliquer le traitement sur chaque alpage
+  sampling_results <- lapply(alpages, function(alpage) {
+    collar_dir <- file.path(raw_data_dir, alpage)  # Dossier GPS du pâturage
+    
+    # Sélection des fichiers selon le type
+    file_pattern <- if (TYPE == "catlog") "\\.csv$" else "\\.Rdata$"
+    collar_files <- list.files(collar_dir, pattern = file_pattern, full.names = TRUE)
+    
+    if (length(collar_files) == 0) {
+      warning(paste("No files found in", collar_dir, "for TYPE =", TYPE))
+      return(NULL)  # Skip processing if no files are found
+    }
+    
+    #  Ouvrir un fichier PDF pour stocker les histogrammes
+    pdf(file.path(filter_output_dir, paste0("Sampling_Periods_", YEAR, "_", alpage, ".pdf")), width = 9, height = 9)
+    
+    # Appliquer la détection du sampling period sur chaque fichier
+    results <- lapply(collar_files, function(collar_f) {
+      collar_ID <- if (TYPE == "catlog") {
+        strsplit(basename(collar_f), split = "_")[[1]][1]
+      } else {
+        strsplit(basename(collar_f), split = "_")[[1]][1]
+      }
+      
+      print(paste("Processing file:", collar_f, "Collar ID:", collar_ID))
+      
+      # Charger les données
+      traject <- switch(
+        TYPE,
+        "catlog" = load_catlog_data(collar_f),
+        "ofb" = load_ofb_data_rdata(collar_f),
+        stop("Unrecognized TYPE: please choose 'catlog' or 'ofb'")
+      )
+      
+      # Vérifier que la colonne 'date' existe
+      if (!"date" %in% names(traject)) {
+        stop(paste("ERREUR: les données du collier", collar_ID, "ne contiennent pas de colonne 'date'"))
+      }
+      
+      # Convertir 'date' en format datetime
+      traject$date <- as.POSIXct(traject$date, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+      traject <- traject[order(traject$date), ]
+      
+      # Calculer les différences de temps en secondes
+      time_diffs <- diff(as.numeric(traject$date))
+      print(paste("Time diffs for", collar_ID, ":", paste(head(time_diffs, 20), collapse = ", ")))  # Debug
+      
+      if (length(time_diffs) == 0) {
+        stop(paste("ERREUR: Aucune différence de temps calculée pour le collier", collar_ID, "- Vérifiez les données !"))
+      }
+      
+      # Filtrer les valeurs aberrantes (> 95e percentile)
+      threshold <- quantile(time_diffs, 0.95, na.rm = TRUE)
+      time_diffs <- time_diffs[time_diffs <= threshold]
+      
+      if (length(time_diffs) == 0) {
+        stop(paste("ERREUR: Aucune donnée valide après filtrage pour le collier", collar_ID, "- Vérifiez les données !"))
+      }
+      
+      # Définition des bornes pour l'histogramme
+      min_time <- min(time_diffs, na.rm = TRUE)
+      max_time <- max(time_diffs, na.rm = TRUE)
+      
+      # Correction de l'histogramme
+      if (min_time == max_time) {
+        warning(paste("Tous les points sont espacés de", min_time, "secondes pour le collier", collar_ID, "- Histogramme inutile."))
+        mode_interval <- min_time
+      } else {
+        breaks_seq <- seq(min_time, max_time, length.out = 30)
+        hist_vals <- hist(time_diffs, breaks = breaks_seq, plot = FALSE)
+        mode_interval <- hist_vals$breaks[which.max(hist_vals$counts)]  # Intervalle dominant
+        
+        #  Génération du graphique dans le PDF
+        hist(time_diffs, breaks = breaks_seq, col = "lightblue", main = paste("Collar ID:", collar_ID),
+             xlab = "Intervalle de temps (secondes)", ylab = "Fréquence")
+        abline(v = mode_interval, col = "red", lwd = 2, lty = 2)
+      }
+      
+      # Convertir en minutes et arrondir à la minute la plus proche
+      sampling_period_min <- round(mode_interval / 60)
+      sampling_period_min <- max(sampling_period_min, 1)
+      
+      # Retourner les résultats
+      list(
+        ID = collar_ID,
+        SAMPLING= sampling_period_min,
+        sampling_period = sampling_period_min * 60
+      )
+    })
+    
+    #  Fermer le fichier PDF après avoir ajouté tous les histogrammes
+    dev.off()
+    
+    return(results)
+  })
+  
+  # Convertir les résultats en data.frame
+  sampling_periods <- do.call(rbind, lapply(sampling_results, function(x) if (!is.null(x)) do.call(rbind, lapply(x, data.frame))))
+  
+  #  Enregistrer en .RDS
+  output_rds_file <- file.path(filter_output_dir, paste0("Sampling_periods_", YEAR, "_",alpage,".rds"))
+  saveRDS(sampling_periods, output_rds_file)
+  
+  return(sampling_periods)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 load_followit_data  <- function(input_file) {
