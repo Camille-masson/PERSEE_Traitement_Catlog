@@ -406,4 +406,4 @@ Une connexion fiable est nécessaire, notamment pour la **Partie 4** (*HMM FITTI
 - Taille des jeux de données et nombre de colliers traités simultanément  
   - Plus le nombre de colliers analysés est élevé, plus les calculs sont longs.  
   - Exemple : Le calcul du taux de chargement prend environ 12 heures pour 40 colliers.  
-  - Important d'anticiper 
+  - Important d'anticiper :)

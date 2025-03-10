@@ -585,9 +585,14 @@ if (F) {
   ### ⚠️⚠️ FIN DE DE LA PARTIE DEGRADATION ⚠️⚠️
   }
   
+  
+  
+  
+  #ANCIENNE
+  
   # Définition de l'objet SAMPLING
   SAMPLING <- 30
-  sampling_parameters <- get_sampling_parameters()
+  sampling_parameters <- get_sampling_parameters_ancienne()
   
   
   ### HMM FIT
@@ -613,16 +618,68 @@ if (F) {
     Par0 = list(step = c(10, 25, 50, 10, 15, 40), angle = c(tan(pi/2), tan(0/2), tan(0/2), log(0.5), log(0.5), log(3))),
     fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
   )
-  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters, alpage, sampling_parameters)
+  run_parameters = scale_step_parameters_to_resampling_ratio_ancienne(run_parameters, alpage, sampling_parameters)
   
   
   
   
   
-  startTime = Sys.time()
-  results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 1800, output_dir)
   
-  endTime = Sys.time()
+  
+  
+  
+  
+  
+  ##NEW
+  
+  # Générer les paramètres pour chaque ID
+  sampling_parameters_list <- lapply(sampling_periods$SAMPLING, get_sampling_parameters)
+  names(sampling_parameters_list) <- sampling_periods$ID
+  
+  
+  
+  
+  ### HMM FIT
+  run_parameters_list <- lapply(names(sampling_parameters_list), function(id) {
+    params <- sampling_parameters_list[[id]]
+    run_parameters <- list(
+      model = "HMM",
+      resampling_ratio = params$resampling_ratio,
+      resampling_first_index = 0,
+      rollavg = FALSE,
+      rollavg_convolution = c(0.15, 0.7, 0.15),
+      knownRestingStates = FALSE,
+      dist = list(step = "gamma", angle = "vm"),
+      DM = list(angle=list(mean = ~1, concentration = ~1)),
+      covariants = ~cos(hour*3.141593/12),
+      Par0 = list(step = c(10, 25, 50, 10, 15, 40), angle = c(tan(pi/2), tan(0/2), tan(0/2), log(0.5), log(0.5), log(3))),
+      fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
+    )
+    
+    scale_step_parameters_to_resampling_ratio(run_parameters, alpage, params)
+  })
+  names(run_parameters_list) <- names(sampling_parameters_list)
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  startTime <- Sys.time()
+  results <- par_HMM_fit_test(data, run_parameters_list, ncores = ncores, individual_info_file, output_dir)
+  endTime <- Sys.time()
+  
+ 
+  
   # Verifié la connéxion intenert 
 
 
