@@ -241,66 +241,135 @@ par_HMM_fit <- function(data, run_parameters, ncores, individual_info_file, samp
 
 
 
-
-
 par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
   # Paralelized wrapper for hmm_fit
-  # Fit a momentuHMM hmm on one several individuals’ trajectories and save the resulting figures.
-  # INPUTS :
-  #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
-  #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
-  #   individual_info_file : path to the csv file containing information about every individual ID, must contain "ID", "Alpage" and "Periode d’echantillonnage" columns.
-  # OUTPUT : a list of the individual’s momentuHMM objects. Each momentuHMM object’s $data field contains the original trajectory (or sub-trajectories), ordered by time,
-  #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
-  
-  print(paste0("+++ momentuHMM parallel RUN +++"))
-  
+  print("+++ momentuHMM parallel RUN +++")
   startTime <- Sys.time()
-  clus <- makeCluster(ncores, outfile='') # outfile='' is verbose option
-  clusterExport(clus, as.list(lsf.str(.GlobalEnv))) # export all loaded functions
+  
+  clus <- makeCluster(ncores, outfile = '')
+  clusterExport(clus, as.list(lsf.str(.GlobalEnv)))
   clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
-  # Load libraries
+  
+  # Chargement des librairies et fonctions dans les clusters
   clusterCall(clus, function() {
-    options(warn=-1)
-    # For the pipes
-    suppressPackageStartupMessages(library(tidyverse)) # includes ggplot2 and dplyr among others
-    theme_set(theme_bw()) # theme for ggplot2
+    options(warn = -1)
+    suppressPackageStartupMessages(library(tidyverse))
+    theme_set(theme_bw())
     library(lubridate)
-    # Movement modelling packages
     library(momentuHMM)
-    # library(foieGras)
     library(adehabitatLT)
-    # GIS packages
     library(sf)
     library(sp)
     library(terra)
-    # Load functions and set paths
-    source("Functions/Functions_utility.R") # Courtesy Théo Michelot
-    BACKGROUND_TYPE = "BDALTI"
+    source("Functions/Functions_utility.R")  # Courtesy Théo Michelot
+    BACKGROUND_TYPE <- "BDALTI"
     source("Functions/Functions_map_plot.R")
     source("Functions/Constants.R")
-    options(warn=0)
+    options(warn = 0)
   })
   
-  results <- parLapply(clus, unique(data$ID),
-                       function(ID) {
-                         alpage = get_individual_alpage(ID, individual_info_file)
-                         
-                         # 🔍 Debugging : Vérifier si l'alpage est bien "alpage_demo"
-                         print(paste0("🔍 ID: ", ID, " - Alpage récupéré : ", alpage))
-                         
-                         sampling_period = get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
-                         
-                         return(hmm_fit(data[data$ID==ID,], run_parameters, paste0(output_dir, alpage, "/"), sampling_period))
-                       }
-  )
+  results <- parLapply(clus, unique(data$ID), function(ID) {
+    # Récupération de l'alpage pour cet individu
+    alpage <- get_individual_alpage(ID, individual_info_file)
+    print(paste0("ID: ", ID, " - Alpage récupéré : ", alpage))
+    
+    # Récupérer la période d'échantillonnage propre à l'individu
+    sampling_period_ind <- get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+    
+    # Création d'un sous-dossier pour cet alpage, dans output_dir
+    pdf_folder <- file.path(output_dir, paste0("Output_PDF_", alpage))
+    if (!dir.exists(pdf_folder)) {
+      dir.create(pdf_folder, recursive = TRUE)
+    }
+    
+    # Appel de la fonction hmm_fit en utilisant le dossier pdf_folder pour sauvegarder le PDF
+    return(hmm_fit(data[data$ID == ID, ], run_parameters, pdf_folder, sampling_period_ind))
+  })
   
   stopCluster(clus)
-  endTime <- Sys.time()
-  print(paste("+++ Cluster total excecution time :", round(difftime(endTime, startTime, units='mins'),2), "min +++"))
-  
+  print(Sys.time() - startTime)
   return(results)
 }
+
+
+
+
+
+
+par_HMM_fit_test_1 <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
+  # Paralelized wrapper for hmm_fit
+  print("+++ momentuHMM parallel RUN +++")
+  startTime <- Sys.time()
+  
+  clus <- makeCluster(ncores, outfile = '')
+  clusterExport(clus, as.list(lsf.str(.GlobalEnv)))
+  clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
+  
+  # Chargement des librairies et fonctions dans les clusters
+  clusterCall(clus, function() {
+    options(warn = -1)
+    suppressPackageStartupMessages(library(tidyverse))
+    theme_set(theme_bw())
+    library(lubridate)
+    library(momentuHMM)
+    library(adehabitatLT)
+    library(sf)
+    library(sp)
+    library(terra)
+    source("Functions/Functions_utility.R")  # Courtesy Théo Michelot
+    BACKGROUND_TYPE <- "BDALTI"
+    source("Functions/Functions_map_plot.R")
+    source("Functions/Constants.R")
+    options(warn = 0)
+  })
+  
+  results <- parLapply(clus, unique(data$ID), function(ID) {
+    # Récupération de l'alpage pour cet individu
+    alpage <- get_individual_alpage(ID, individual_info_file)
+    print(paste0("ID: ", ID, " - Alpage récupéré : ", alpage))
+    
+    # Récupérer la période d'échantillonnage propre à l'individu
+    sampling_period_ind <- get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+    
+    # Création d'un sous-dossier pour cet alpage, dans output_dir
+    pdf_folder <- file.path(output_dir, paste0("Output_PDF_", alpage))
+    if (!dir.exists(pdf_folder)) {
+      dir.create(pdf_folder, recursive = TRUE)
+    }
+    
+    # Appel de la fonction hmm_fit en utilisant le dossier pdf_folder pour sauvegarder le PDF
+    return(hmm_fit(data[data$ID == ID, ], run_parameters, pdf_folder, sampling_period_ind))
+  })
+  
+  stopCluster(clus)
+  print(Sys.time() - startTime)
+  return(results)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ### HMM results plotting functions
 plot_results <- function(hmm, output_pdf_file) {
