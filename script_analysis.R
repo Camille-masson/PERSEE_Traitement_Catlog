@@ -11,7 +11,7 @@ source("config.R")
 # Définition de l'année d'analyse
 YEAR = 9999
 alpage = "Alpage_demo"
-alpages = C("Alpage_demo")
+alpages = "Alpage_demo"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -40,7 +40,7 @@ if (FALSE) {  # Mettre TRUE pour exécuter
     dir.create(gps_output_dir, recursive = TRUE)
   }
   # Créeation du GPKG de sortie nommé : Donnees_brutes_9999_Alpage_demo_simplifiees.gpkg
-  output_file <- file.path(gps_output_dir, paste0("Donnees_brutes_", YEAR, "_", alpages, "_simplifiees.gpkg"))
+  output_file <- file.path(gps_output_dir, paste0("Donnees_brutes_", YEAR, "_", alpage, "_simplifiees.gpkg"))
   
   
   ## CODE ##
