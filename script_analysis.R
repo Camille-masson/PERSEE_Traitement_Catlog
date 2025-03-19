@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2021
+YEAR <- 2022
 TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Sept-Laux"
-alpages <- "Sept-Laux"
+alpage <- "Viso"
+alpages <- "Viso"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
