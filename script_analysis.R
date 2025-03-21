@@ -9,9 +9,9 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse
-YEAR = 9999
-alpage = "Alpage_demo"
-alpages = "Alpage_demo"
+YEAR = 2024
+alpage = "Sanguiniere"
+alpages = "Sanguiniere"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -24,7 +24,7 @@ ALPAGES <- ALPAGES_TOTAL[[as.character(YEAR)]]
 
 #### 1. Simplification en GPKG ####
 #----------------------------------#
-if (FALSE) {  # Mettre TRUE pour exécuter
+if (TRUE) {  
   library(terra)
   source(file.path(functions_dir, "Functions_filtering.R"))
   
@@ -35,7 +35,7 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   ## SORTIE ##
   
   # Création du sous-dossier de sortie : GPS_simple_GPKG
-  gps_output_dir <- file.path(output_dir, "GPS_simple_GPKG")
+  gps_output_dir <- file.path(output_dir, "1. GPS_simple_GPKG")
   if (!dir.exists(gps_output_dir)) {
     dir.create(gps_output_dir, recursive = TRUE)
   }
@@ -60,7 +60,7 @@ if (FALSE) {  # Mettre TRUE pour exécuter
 }
 
 
-#### 2.BJONERAAS FILTER CALIBRATION ####
+#### 2.1 BJONERAAS FILTER CALIBRATION ####
 #--------------------------------------#
 if (FALSE) {
   # Chargement des fonctions nécessaires
@@ -81,7 +81,7 @@ if (FALSE) {
   
   ## SORTIE ##
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
-  filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
+  filter_output_dir <- file.path(output_dir, "2. Filtre_de_Bjorneraas")
   if (!dir.exists(filter_output_dir)) {
     dir.create(filter_output_dir, recursive = TRUE)
   }
@@ -167,9 +167,7 @@ if (FALSE) {
   dev.off()
 }
 
- 
-
-#### 3. FILTERING CATLOG DATA ####
+#### 2.2 FILTERING CATLOG DATA ####
 #--------------------------------#
 if (FALSE) {
   # Chargement des fonctions nécessaires
@@ -184,11 +182,9 @@ if (FALSE) {
   #Load and vérife data collier pose (format)
   IFF_data <- read.csv(IIF, stringsAsFactors = FALSE, encoding = "UTF-8")
   
-  # Les alpages à traiter
-  alpages = c("Alpage_demo")
   
   ## SORTIES ##
-  filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
+  filter_output_dir <- file.path(output_dir, "2. Filtre_de_Bjorneraas")
   if (!dir.exists(filter_output_dir)) {
     dir.create(filter_output_dir, recursive = TRUE)
   }
@@ -238,12 +234,11 @@ if (FALSE) {
   }
 }
 
-#### 4. HMM FITTING #### 
+#### 3. HMM FITTING #### 
 #----------------------#
 if (FALSE) {
   library(snow)
   library(stats)
-  # Movement modelling packages
   library(momentuHMM)
   library(adehabitatLT)
   library(adehabitatHR)
@@ -254,18 +249,17 @@ if (FALSE) {
   
   # ENTREES
   # Un .RDS contenant les trajectoires filtrées
-  input_rds_file <- file.path(output_dir, "Filtre_de_Bjorneraas", paste0("Catlog_", YEAR, "_filtered_", alpage, ".rds"))
+  input_rds_file <- file.path(output_dir, "2. Filtre_de_Bjorneraas", paste0("Catlog_", YEAR, "_filtered_", alpage, ".rds"))
   
   # Un data.frame contenant la correspondance entre colliers et alpages. Doit contenir les colonnes  "ID", "Alpage" et "Periode d’echantillonnage"
   individual_info_file <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"), paste0(YEAR, "_colliers_poses.csv"))
   individual_info_file_data <- read.csv(individual_info_file, stringsAsFactors = FALSE, encoding = "UTF-8")
-  # Les alpages à traiter
-  alpages = ALPAGES
+  
   
   # SORTIES
   
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
-  filter_output_dir <- file.path(output_dir, "HMM_comportement")
+  filter_output_dir <- file.path(output_dir, "3. HMM_comportement")
   if (!dir.exists(filter_output_dir)) {
     dir.create(filter_output_dir, recursive = TRUE)
   }
@@ -278,15 +272,14 @@ if (FALSE) {
   
   
   # Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
-  output_rds_file = file.path(output_dir, "HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
+  output_rds_file = file.path(output_dir, "3. HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
   
   # Un .PDF contenant les trajéctoires catégirisées par comportement 
-  output_pdf_file = file.path(output_dir, "HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
+  output_pdf_file = file.path(output_dir, "3. HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
   
   ### LOADING DATA FOR ANALYSES
   data = readRDS(input_rds_file)
-  data = data[data$species == "brebis",]
-  data = data[data$alpage %in% alpages,]
+  
   
   ### HMM FIT
   run_parameters = list(
@@ -343,7 +336,7 @@ if (FALSE) {
     runs_to_pdf_2(alpage, parameters_df, results_df, data_alpage , 
                 paste(round(difftime(endTime, startTime, units='mins'),2), "min"), 
                 output_dir, 
-                file.path(output_dir, "HMM_comportement", paste0("HMM_fitting_", YEAR, "_", alpage, ".pdf")), 
+                file.path(output_dir, "3. HMM_comportement", paste0("HMM_fitting_", YEAR, "_", alpage, ".pdf")), 
                 show_performance_indicators = FALSE)
   }
   # A revoir ! : fonction Functions/HMM_fit_template.Rmd does not exist
@@ -354,7 +347,7 @@ if (FALSE) {
 }
 
 
-#### 5. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
+#### 4. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
 #-------------------------------------------------------------#
 if (FALSE){
   
@@ -367,17 +360,18 @@ if (FALSE){
   
   # ENTREES
   # Un .RDS contenant les trajectoires catégorisées par comportement
-  input_rds_file <- file.path(output_dir, "HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds"))
+  input_rds_file <- file.path(output_dir, "3. HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds"))
+
   
   # Un data.frame contenant les tailles de troupeaux et les évolutions des tailles en fonction de la date
   flock_size_file <- file.path(raw_data_dir, paste0(YEAR, "_tailles_troupeaux.csv"))
   flock_size_file_data <- read.csv(flock_size_file, stringsAsFactors = FALSE, encoding = "UTF-8")
   # Les alpages à traiter
-  alpages <- ALPAGES
+  
   
   # SORTIES
   # Dossier de sortie
-  save_dir <- file.path(output_dir, "Chargements_calcules")
+  save_dir <- file.path(output_dir, "4. Chargements_calcules")
   
   # Un .RDS par alpage contenant les charges journalières par comportement
   state_daily_rds_prefix <- paste0("by_day_and_state_", YEAR, "_")
@@ -399,15 +393,17 @@ if (FALSE){
     data <- data[data$alpage == alpage,]
     
     # Chargement du raster de phénologie avec le bon chemin
-    raster_file <- file.path(raster_dir, paste0("ndvis_", YEAR, "_", alpage, "_pheno_metrics.tif"))
+    raster_file <- file.path(raster_dir, paste0("ndvis_", YEAR,"_",alpage, "_pheno_metrics.tif"))
     pheno_t0 <- get_raster_cropped_L93(raster_file, get_minmax_L93(data, 100), reproject = TRUE, band = 2, as = "SpatialPixelDataFrame")
     
     # Définition du dossier de stockage spécifique à l'alpage
-    alpage_save_dir <- file.path(save_dir, paste0(alpage, "_", YEAR))
+    alpage_save_dir <- file.path(save_dir, paste0(YEAR, "_", alpage))
     if (!dir.exists(alpage_save_dir)) dir.create(alpage_save_dir, recursive = TRUE)
     
     
     # BY day and by state 
+    
+    
     
     flock_load_by_day_and_state_to_rds_kernelbb(
       data, 
