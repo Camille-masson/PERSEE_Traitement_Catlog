@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
+YEAR <- 9999
 TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Cayolle"
-alpages <- c( "Lanchatra", "Rouanette")
+alpage <- "Alpage_demo"
+alpages <- "Alpage_demo"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -79,7 +79,7 @@ if (FALSE) {
   for(alpage in alpages){
   # ENTREE
   #Dossier contenant les sous dossier des chargement
-  case_flock_file = file.path(output_dir, "Chargements_Calcules")
+  case_flock_file = file.path(output_dir, "4. Chargements_Calcules")
   #Dossier contenant les fichiers du tot de chargement
   case_flock_alpage_file = file.path(case_flock_file,paste0(YEAR,"_",alpage))
   
@@ -105,7 +105,7 @@ if (FALSE) {
   # SORTIE 
   
   #Création du dossier de sortie des indicateur pour la visualistaion
-  output_visu_case <- file.path(output_dir, "6.Indicateurs_visualisation")
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   if (!dir.exists(output_visu_case)) {
     dir.create(output_visu_case, recursive = TRUE)
   }
@@ -138,13 +138,13 @@ if (FALSE) {
   # CODE
 
   #Indicateur : Charge total .TIF
-  if (FALSE) {
+  if (TRUE) {
   total_flock_load_tif(total_rds_prefix, output_flock_tot_tif, output_flock_tot_tif_crop, UP_file, alpage, alpage_info_file)
     }
   
   
   #Indicateur : Charge_by_state
-  if (FALSE) {
+  if (TRUE) {
   state_flock_load_tif(state_rds_prefix,output_flock_repos_tif,output_flock_deplacement_tif, output_flock_paturage_tif,
                        output_flock_repos_tif_crop, output_flock_deplacement_tif_crop , output_flock_paturage_tif_crop,
                        UP_file, alpage, alpage_info_file)
@@ -184,7 +184,7 @@ if (FALSE) {
   # ENTREES
   
   # Dossier contenant les fichiers du comportement
-  case_state_file = file.path(output_dir, "HMM_comportement")
+  case_state_file = file.path(output_dir, "3. HMM_comportement")
   # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
   state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
   
@@ -195,7 +195,7 @@ if (FALSE) {
   # SORTIE 
   
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_visu_case <- file.path(output_dir, "6.Indicateurs_visualisation")
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   if (!dir.exists(output_visu_case)) {
     dir.create(output_visu_case, recursive = TRUE)
   }
@@ -228,7 +228,7 @@ if (FALSE) {
   
   # ENTREE
   #Dossier contenant les sous dossier des chargement
-  case_flock_file = file.path(output_dir, "Chargements_Calcules")
+  case_flock_file = file.path(output_dir, "4. Chargements_Calcules")
   #Dossier contenant les fichiers du tot de chargement
   case_flock_alpage_file = file.path(case_flock_file,paste0(YEAR,"_",alpage))
   
@@ -238,7 +238,7 @@ if (FALSE) {
   
   # SORTIE 
   #Création du dossier de sortie des indicateur pour la visualistaion
-  output_visu_case <- file.path(output_dir, "6.Indicateurs_visualisation")
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   if (!dir.exists(output_visu_case)) {
     dir.create(output_visu_case, recursive = TRUE)
   }
@@ -358,13 +358,13 @@ if (FALSE){
     
   # ENTREES
   # Dossier contenant les fichiers du comportement
-  case_state_file = file.path(output_dir, "HMM_comportement")
+  case_state_file = file.path(output_dir, "3. HMM_comportement")
   # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
   state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_visu_case <- file.path(output_dir, "6.Indicateurs_visualisation")
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   if (!dir.exists(output_visu_case)) {
     dir.create(output_visu_case, recursive = TRUE)
   }
@@ -403,7 +403,7 @@ if (FALSE){
   for (alpage in alpages){
   # ENTREES
   # Dossier contenant les fichiers du comportement
-  case_state_file = file.path(output_dir, "HMM_comportement")
+  case_state_file = file.path(output_dir, "3. HMM_comportement")
   # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
   state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
   
@@ -420,7 +420,7 @@ if (FALSE){
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_visu_case <- file.path(output_dir, "6.Indicateurs_visualisation")
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   if (!dir.exists(output_visu_case)) {
     dir.create(output_visu_case, recursive = TRUE)
   }
@@ -489,7 +489,7 @@ if (FALSE){
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_carto_case <- file.path(output_dir, "7.Carto_Fond_Carte")
+  output_carto_case <- file.path(output_dir, "6. Carto_Fond_Carte")
   if (!dir.exists(output_carto_case)) {
     dir.create(output_carto_case, recursive = TRUE)
   }
@@ -541,7 +541,7 @@ if (FALSE){
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_Plot_Animation_case <- file.path(output_dir, "8.Plot_et_Animation")
+  output_Plot_Animation_case <- file.path(output_dir, "7. Plot_et_Animation")
   if (!dir.exists(output_Plot_Animation_case)) {
     dir.create(output_Plot_Animation_case, recursive = TRUE)
   }
@@ -576,7 +576,7 @@ if (FALSE){
   
   #ENTREE
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_visu_case <- file.path(output_dir, "6.Indicateurs_visualisation")
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   if (!dir.exists(output_visu_case)) {
     dir.create(output_visu_case, recursive = TRUE)
   }
@@ -591,7 +591,7 @@ if (FALSE){
  
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_Plot_Animation_case <- file.path(output_dir, "8.Plot_et_Animation")
+  output_Plot_Animation_case <- file.path(output_dir, "7. Plot_et_Animation")
   if (!dir.exists(output_Plot_Animation_case)) {
     dir.create(output_Plot_Animation_case, recursive = TRUE)
   }
@@ -772,7 +772,7 @@ if (FALSE){
   
   # ENTREE
   #Dossier contenant les sous dossier des chargement
-  case_flock_file = file.path(output_dir, "Chargements_Calcules")
+  case_flock_file = file.path(output_dir, "4. Chargements_Calcules")
   #Dossier contenant les fichiers du tot de chargement
   case_flock_alpage_file = file.path(case_flock_file,paste0(YEAR,"_",alpage))
   
@@ -792,7 +792,7 @@ if (FALSE){
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
-  output_Plot_Animation_case <- file.path(output_dir, "8.Plot_et_Animation")
+  output_Plot_Animation_case <- file.path(output_dir, "7. Plot_et_Animation")
   if (!dir.exists(output_Plot_Animation_case)) {
     dir.create(output_Plot_Animation_case, recursive = TRUE)
   }
