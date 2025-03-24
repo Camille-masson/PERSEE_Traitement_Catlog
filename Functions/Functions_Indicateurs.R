@@ -374,7 +374,7 @@ save_distance_denivele <- function(state_rds_file, distance_csv_file , altitude_
 
 
 
-generate_trajectory_gpkg <- function(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10) {
+generate_trajectory_gpkg_catlog <- function(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10) {
   
   # Charger les données depuis le fichier RDS
   data <- readRDS(state_rds_file)
@@ -433,7 +433,7 @@ generate_trajectory_gpkg <- function(state_rds_file, output_state_traj_case, YEA
 
 
 
-generate_trajectory_gpkg <- function(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10, sampling_periods) {
+generate_trajectory_gpkg_ofb <- function(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10, sampling_periods) {
   
   # Charger les données depuis le fichier RDS
   data <- readRDS(state_rds_file)

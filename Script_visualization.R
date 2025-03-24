@@ -9,9 +9,9 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
+YEAR <- 2021
 TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Viso"
+alpage <- "Sept-Laux"
 alpages <- "Sept-Laux"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
@@ -364,11 +364,11 @@ if (FALSE){
   data = readRDS(state_rds_file)
   
   
-  
+  if (TYPE == "ofb"){
   # Charger le fichier des périodes d'échantillonnage
   sampling_period_file <- file.path(output_dir, "0. Sampling_Periods", paste0("Sampling_Periods_", YEAR, "_", alpage, ".rds"))
   sampling_periods <- readRDS(sampling_period_file)
-  print(sampling_periods)
+  }
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
@@ -388,8 +388,13 @@ if (FALSE){
   
   
   # CODE
-  generate_trajectory_gpkg(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10, sampling_periods = sampling_periods)
-  generate_trajectory_gpkg(state_rds_file,output_state_traj_case,YEAR,alpage,sampling_interval = 20)#Point toute les 30 minutes (reglé de base a 10)
+  if (TYPE == "ofb"){
+  generate_trajectory_gpkg_ofb(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10, sampling_periods = sampling_periods)
+  }
+  
+  if (TYPE == "catlog"){
+  generate_trajectory_gpkg_catlog(state_rds_file,output_state_traj_case,YEAR,alpage,sampling_interval = 20)#Point toute les 30 minutes (reglé de base a 10)
+  }
   
   }
   
