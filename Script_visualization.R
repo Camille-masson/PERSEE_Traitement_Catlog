@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 9999
+YEAR <- 2022
 TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Alpage_demo"
-alpages <- "Alpage_demo"
+alpage <- "Viso"
+alpages <- "Sept-Laux"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -361,6 +361,14 @@ if (FALSE){
   case_state_file = file.path(output_dir, "3. HMM_comportement")
   # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
   state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
+  data = readRDS(state_rds_file)
+  
+  
+  
+  # Charger le fichier des périodes d'échantillonnage
+  sampling_period_file <- file.path(output_dir, "0. Sampling_Periods", paste0("Sampling_Periods_", YEAR, "_", alpage, ".rds"))
+  sampling_periods <- readRDS(sampling_period_file)
+  print(sampling_periods)
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
@@ -380,7 +388,7 @@ if (FALSE){
   
   
   # CODE
-  
+  generate_trajectory_gpkg(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10, sampling_periods = sampling_periods)
   generate_trajectory_gpkg(state_rds_file,output_state_traj_case,YEAR,alpage,sampling_interval = 20)#Point toute les 30 minutes (reglé de base a 10)
   
   }

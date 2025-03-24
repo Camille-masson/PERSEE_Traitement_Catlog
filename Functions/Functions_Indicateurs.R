@@ -433,6 +433,77 @@ generate_trajectory_gpkg <- function(state_rds_file, output_state_traj_case, YEA
 
 
 
+generate_trajectory_gpkg <- function(state_rds_file, output_state_traj_case, YEAR, alpage, sampling_interval = 10, sampling_periods) {
+  
+  # Charger les données depuis le fichier RDS
+  data <- readRDS(state_rds_file)
+  
+  # Conversion de `hour` (décimal) en format HH:MM:SS
+  data$hour <- format(as.POSIXct(data$hour * 3600, origin = "1970-01-01", tz = "UTC"), "%H:%M:%S")
+  
+  # Liste des ID uniques pour générer un fichier par ID
+  unique_ids <- unique(data$ID)
+  
+  # Boucle sur chaque ID unique
+  for (id in unique_ids) {
+    
+    # Filtrer les données pour cet ID et trier par ordre chronologique
+    data_filtered <- data %>%
+      filter(ID == id) %>%
+      arrange(time)
+    
+    # Récupérer la valeur de SAMPLING pour cet ID dans la table (en minutes)
+    current_sampling <- sampling_periods$SAMPLING[sampling_periods$ID == id]
+    if (length(current_sampling) == 0) {
+      warning(paste("Aucun SAMPLING trouvé pour l'ID", id, "-> utilisation de 10 minutes par défaut"))
+      current_sampling <- 10
+    }
+    
+    # Calcul du facteur de sous-échantillonnage :
+    # Si SAMPLING < 10, on conserve 1 point tous les round(10 / SAMPLING) points,
+    # sinon, si SAMPLING >= 10, on ne sous-échantillonne pas (facteur = 1)
+    subsample_factor <- if (current_sampling < 10) {
+      round(10 / current_sampling)
+    } else {
+      1
+    }
+    
+    # Application du sous-échantillonnage selon le facteur calculé
+    data_filtered <- data_filtered[seq(1, nrow(data_filtered), by = subsample_factor), ]
+    
+    # Vérifier s'il y a assez de points après filtrage
+    if (nrow(data_filtered) < 2) {
+      print(paste("ID", id, "n'a pas assez de points après sous-échantillonnage. Fichier ignoré."))
+      next
+    }
+    
+    # Transformer les points en objet spatial `sf`
+    sf_points <- st_as_sf(data_filtered, coords = c("x", "y"), crs = 2154)
+    
+    # Créer les lignes reliant chaque point à son suivant
+    line_list <- list()
+    for (i in 1:(nrow(data_filtered) - 1)) {
+      # Création d'une ligne entre deux points successifs
+      line_list[[i]] <- st_linestring(as.matrix(data_filtered[i:(i+1), c("x", "y")]))
+    }
+    
+    # Création de l'objet sf contenant les trajectoires
+    sf_lines <- st_sfc(line_list, crs = 2154)
+    
+    # Création d'un data frame pour stocker les informations des lignes (on supprime le dernier point pour aligner avec les lignes)
+    traj_df <- data_filtered[-nrow(data_filtered), ]
+    sf_traj <- st_sf(traj_df, geometry = sf_lines)
+    
+    # Définir le chemin de sortie pour le GeoPackage
+    output_gpkg <- file.path(output_state_traj_case, paste0("Comportement_traj_", YEAR, "_", alpage, "_", id, "_", sampling_interval, ".gpkg"))
+    
+    # Sauvegarde des points et des lignes dans le même fichier
+    st_write(sf_points, output_gpkg, layer = "points", delete_dsn = TRUE)  # Points
+    st_write(sf_traj, output_gpkg, layer = "trajectoires", append = TRUE)  # Lignes
+    
+    print(paste("Fichier GeoPackage créé pour ID", id, "avec un sous-échantillonnage (facteur =", subsample_factor, ") :", output_gpkg))
+  }
+}
 
 
 
