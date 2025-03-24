@@ -2057,115 +2057,6 @@ par_HMM_fit_test <- function(data, run_parameters_list, ncores, individual_info_
 
 
 
-par_HMM_fit_test_gpt <- function(data, run_parameters_list, ncores, individual_info_file, output_dir, sampling_table) {
-  cat("[INFO] Démarrage de l'exécution parallèle de momentuHMM...\n")
-  flush.console()
-  
-  startTime <- Sys.time()
-  clus <- makeCluster(ncores, outfile = "")
-  
-  # 🔥 Vérification et conversion de `sampling_table`
-  if (!is.data.frame(sampling_table)) {
-    cat("[AVERTISSEMENT] `sampling_table` n'est pas un data.frame, tentative de conversion...\n")
-    sampling_table <- as.data.frame(sampling_table)
-  }
-  if (!"sampling_period" %in% colnames(sampling_table)) {
-    stop("[ERREUR] La colonne `sampling_period` est absente de sampling_table !")
-  }
-  
-  # Charger les packages dans les workers
-  clusterEvalQ(clus, {
-    options(warn = -1)
-    suppressPackageStartupMessages(library(tidyverse))
-    library(lubridate)
-    library(momentuHMM)
-    library(adehabitatLT)
-    library(sf)
-    library(sp)
-    library(terra)
-    source("Functions/Functions_utility.R")
-    source("Functions/Functions_map_plot.R")
-    source("Functions/Functions_HMM_fitting.R")  
-    options(warn = 0)
-  })
-  
-  # Exporter les variables globales aux workers
-  clusterExport(clus, as.list(lsf.str(.GlobalEnv))) 
-  # Exportation des variables aux workers
-  clusterExport(clus, list("data", "run_parameters_list", "output_dir", "individual_info_file", 
-                           "sampling_table", "CRS_L93", "CRS_WSG84"), envir = environment())
-  
-  results <- parLapply(clus, unique(data$ID), function(ID) {
-    log_file <- paste0("log_", ID, ".txt")
-    sink(log_file, append = TRUE, split = TRUE)
-    on.exit(sink(), add = TRUE)
-    
-    cat(paste0("[INFO] Traitement de l'individu ID: ", ID, "\n"))
-    flush.console()
-    
-    alpage <- get_individual_alpage(ID, individual_info_file)
-    cat(paste0("[INFO] Alpage associé: ", alpage, "\n"))
-    
-    if (!ID %in% names(run_parameters_list)) {
-      cat(paste0("[ERREUR] ID ", ID, " absent de run_parameters_list\n"))
-      return(NULL)
-    }
-    run_parameters <- run_parameters_list[[ID]]
-    
-    sampling_period <- sampling_table$sampling_period[sampling_table$ID == ID]
-    sampling_period <- ifelse(length(sampling_period) > 0, as.numeric(sampling_period), NA)
-    
-    if (is.na(sampling_period) || length(sampling_period) == 0) {
-      cat(paste0("[ERREUR] Aucun `sampling_period` trouvé pour ID: ", ID, "\n"))
-      return(NULL)
-    }
-    
-    cat(paste0("[INFO] ID: ", ID, " | Sampling Period: ", sampling_period, " sec\n"))
-    
-    # 🔥 Vérification de `CRS_L93`
-    if (!exists("CRS_L93")) {
-      cat(paste0("[ERREUR] `CRS_L93` est introuvable pour ID: ", ID, "\n"))
-      return(NULL)
-    }
-    
-    result <- tryCatch({
-      hmm_fit(data[data$ID == ID, ], run_parameters, paste0(output_dir, alpage, "/"), sampling_period)
-    }, error = function(e) {
-      cat(paste0("[ERREUR] Problème détecté pour ID: ", ID, " - Message: ", e$message, "\n"))
-      flush.console()
-      return(NULL)
-    })
-    
-    cat(paste0("[INFO] Fin du traitement pour ID: ", ID, "\n"))
-    flush.console()
-    
-    return(result)
-  })
-  
-  stopCluster(clus)
-  endTime <- Sys.time()
-  
-  cat(paste0("[INFO] Exécution terminée. Durée totale : ", round(difftime(endTime, startTime, units='mins'), 2), " minutes.\n"))
-  
-  return(results)
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 ### HMM fitting and plotting function
@@ -2235,6 +2126,99 @@ hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
   flush.console()
   plot_results(run, paste0(save_dir, ID))
   
+  run$data <- run$data[!is.na(run$data$x), ]
+  run$data <- run$data[order(run$data$time), ]
+  run$data$ID <- ID
+  
+  cat("[INFO] Ajustement HMM terminé pour ID: ", ID, "\n")
+  flush.console()
+  
+  return(run)
+}
+
+
+
+
+
+#TEST a revoir si ca ne marche pas : 
+hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
+  # Récupération de l'ID et affichage d'information
+  ID <- data$ID[1]
+  cat(paste0("[INFO] Démarrage de l'ajustement du modèle HMM pour l'individu ID: ", 
+             ID, " avec une période d'échantillonnage de ", sampling_period, " secondes.\n"))
+  flush.console()
+  
+  # Régularisation des trajectoires
+  cat("[INFO] Régularisation des trajectoires en cours...\n")
+  flush.console()
+  data_hmm <- regularise_trajectories(data, sampling_period)
+  
+  # Application du lissage par moyenne mobile si demandé
+  if (runPar$rollavg) {
+    cat("[INFO] Application de lissage par moyenne mobile...\n")
+    flush.console()
+    data_hmm <- rolling_averaging_trajectories(data_hmm, conv = runPar$rollavg_convolution)
+  }
+  
+  # Rééchantillonnage des trajectoires
+  cat("[INFO] Rééchantillonnage des trajectoires en cours...\n")
+  flush.console()
+  data_hmm <- resample_trajectories(data_hmm, runPar$resampling_ratio, runPar$resampling_first_index)
+  
+  # Préparation des données pour le modèle HMM
+  cat("[INFO] Préparation des données pour le modèle HMM...\n")
+  flush.console()
+  data_hmm <- prepare_hmm_trajectories(data_hmm)
+  
+  # Initialisation des états connus à NA
+  knownStates <- rep(NA, nrow(data_hmm))
+  if ("hour" %in% colnames(data_hmm) && runPar$knownRestingStates) {
+    cat("[INFO] Identification des états de repos connus...\n")
+    flush.console()
+    knownStates[(data_hmm$hour > 3 & data_hmm$hour < 3.5) | 
+                  (data_hmm$hour > 20.5 & data_hmm$hour < 21)] <- 1
+  }
+  
+  # Ajustement du modèle HMM avec les paramètres définis
+  cat("[INFO] Ajustement du modèle HMM en cours...\n")
+  flush.console()
+  stateNames <- c("Repos", "Pâturage", "Déplacement")
+  
+  run <- fitHMM(
+    data_hmm, 
+    nbStates = 3, 
+    dist = runPar$dist, 
+    DM = runPar$DM, 
+    Par0 = runPar$Par0,
+    estAngleMean = list(angle = TRUE), 
+    fixPar = runPar$fixPar,
+    stateNames = stateNames,
+    knownStates = knownStates,
+    formula = runPar$covariants,
+    optMethod = "Nelder-Mead"
+  )
+  
+  cat("[INFO] Modèle HMM ajusté avec succès.\n")
+  flush.console()
+  
+  # Calcul des probabilités d'état
+  cat("[INFO] Calcul des probabilités d'état...\n")
+  flush.console()
+  run$data$state <- viterbi(run)
+  state_proba <- stateProbs(run)
+  # Extraction correcte de la probabilité pour chaque observation
+  run$data$state_proba <- state_proba[cbind(seq_len(nrow(state_proba)), run$data$state)]
+  
+  # Création du répertoire de sauvegarde pour les trajectoires individuelles
+  save_dir <- paste0(alpage_directory, "individual_trajectories/")
+  dir.create(save_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  # Génération des graphiques pour l'individu
+  cat(paste0("[INFO] Génération des graphiques pour ID: ", ID, "\n"))
+  flush.console()
+  plot_results(run, paste0(save_dir, ID))
+  
+  # Nettoyage et tri final des données
   run$data <- run$data[!is.na(run$data$x), ]
   run$data <- run$data[order(run$data$time), ]
   run$data$ID <- ID
@@ -2354,6 +2338,51 @@ viterbi_trajectory_to_rds <- function(data_hmm, output_file, individual_info_fil
 
 
 
+viterbi_trajectory_to_rds <- function(data_hmm, output_file, individual_info_file) {
+  cat("[INFO] Adaptation et sauvegarde des trajectoires HMM en cours...\n")
+  flush.console()
+  
+  # Chargement des informations individuelles
+  if (!file.exists(individual_info_file)) {
+    stop("[ERREUR] Fichier `individual_info_file` introuvable : ", individual_info_file)
+  }
+  individual_info <- read.csv(individual_info_file, header = TRUE, stringsAsFactors = FALSE)
+  
+  # Vérification des colonnes requises
+  required_cols <- c("Collier", "Alpage", "Espece", "Race")
+  missing_cols <- setdiff(required_cols, colnames(individual_info))
+  if (length(missing_cols) > 0) {
+    stop("[ERREUR] Colonnes manquantes dans `individual_info_file` : ", 
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # Suppression des colonnes inutiles
+  data_save <- as.data.frame(subset(data_hmm, select = -c(step, angle)))
+  
+  # Conversion des états numériques en labels
+  stateNames <- c("Repos", "Paturage", "Deplacement")
+  data_save$state <- factor(stateNames[data_save$state], levels = stateNames)
+  
+  # Suppression des valeurs manquantes pour la colonne x
+  data_save <- data_save[!is.na(data_save$x), ]
+  
+  # Fusion des données avec les informations individuelles
+  merged_data <- merge(data_save, individual_info, by.x = "ID", by.y = "Collier", all.x = TRUE)
+  
+  if (any(is.na(merged_data$Alpage))) {
+    cat("[AVERTISSEMENT] Certains individus n'ont pas trouvé d'alpage dans `individual_info_file`.\n")
+  }
+  
+  # Enregistrement des nouvelles données (remplacement complet)
+  tryCatch({
+    saveRDS(merged_data, file = output_file)
+    cat("[INFO] Sauvegarde réussie dans : ", output_file, "\n")
+  }, error = function(e) {
+    cat("[ERREUR] Impossible d'enregistrer le fichier RDS !\nMessage: ", e$message, "\n")
+  })
+  
+  flush.console()
+}
 
 
 

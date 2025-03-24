@@ -1,4 +1,3 @@
-
 #### 0. LIBRARIES AND CONSTANTS ####
 #----------------------------------#
 gc()
@@ -31,40 +30,38 @@ ALPAGES_TOTAL <- list(
 )
 ALPAGES <- ALPAGES_TOTAL[[as.character(YEAR)]]
 
+if (FALSE){
+  # Définition de la période d'échantillionage
+  
+  ## ENTREE ##
+  # Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages
+  
+  
+  
+  ## SORTIE ##
+  
+  # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
+  filter_output_dir <- file.path(output_dir, "0. Sampling_Periods")
+  if (!dir.exists(filter_output_dir)) {
+    dir.create(filter_output_dir, recursive = TRUE)
+  }
+  
+  # Fichier pdf de sortie pour visualisation du sampling_periode
+  pdf(file.path(filter_output_dir, paste0("0. Sampling_Periods_", YEAR, "_", alpage, ".pdf")), width = 9, height = 9)
+  
+  # Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
+  output_rds_file = file.path(output_dir, "0. Sampling_Periods", paste0("Sampling_periods_",YEAR,"_",alpage,".rds"))
+  
+  
+  sampling_periods <- identify_sampling_period(data_dir, YEAR, TYPE, alpages, output_dir)
+  
+  print(sampling_periods)
 
-# Définition de la période d'échantillionage
-
-## ENTREE ##
-# Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages
-
-
-
-## SORTIE ##
-
-# Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
-filter_output_dir <- file.path(output_dir, "Sampling_Periods")
-if (!dir.exists(filter_output_dir)) {
-  dir.create(filter_output_dir, recursive = TRUE)
 }
-
-# Fichier pdf de sortie pour visualisation du sampling_periode
-pdf(file.path(filter_output_dir, paste0("Sampling_Periods_", YEAR, "_", alpage, ".pdf")), width = 9, height = 9)
-
-# Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
-output_rds_file = file.path(output_dir, "Sampling_Periods", paste0("Sampling_periods_",YEAR,"_",alpage,".rds"))
-
-
-sampling_periods <- identify_sampling_period(data_dir, YEAR, TYPE, alpages, output_dir)
-
-print(sampling_periods)
-
 
 
 #### 1. Simplification en GPKG ####
 #----------------------------------#
-
-
-
 if (FALSE) {  # Mettre TRUE pour exécuter
   library(terra)
   source(file.path(functions_dir, "Functions_filtering.R"))
@@ -79,7 +76,7 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   
   ## SORTIE ##
   # Création du sous-dossier de sortie
-  gps_output_dir <- file.path(output_dir, "GPS_simple_GPKG")
+  gps_output_dir <- file.path(output_dir, "1. GPS_simple_GPKG")
   if (!dir.exists(gps_output_dir)) {
     dir.create(gps_output_dir, recursive = TRUE)
   }
@@ -163,19 +160,14 @@ if (FALSE) {  # Mettre TRUE pour exécuter
   writeVector(merged_data, filename = output_file, overwrite = TRUE)
 }
 
-
-
-
-
-
-
-
 #### 2.BJONERAAS FILTER CALIBRATION ####
 #--------------------------------------#
-if (F) {
+if (FALSE) {
   # Chargement des fonctions nécessaires
   source(file.path(functions_dir, "Functions_filtering.R"))
   source(file.path(functions_dir, "Functions_map_plot.R"))
+  source(file.path(functions_dir, "Functions_check_metadata.R"))
+  
   
   ## ENTREES ##
   # Un dossier contenant les trajectoires brutes, au format csv issu des colliers Catlog,
@@ -185,14 +177,12 @@ if (F) {
   # Un data.frame contenant les dates de pose et de retrait des colliers
   # Doit contenir les colonnes "alpage", "date_pose" et "date_retrait"
   AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
-  
-  # Vérification du format du fichier (souvent mal formaté, attention csv UTF8)
-  AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
+  check_and_correct_csv(AIF)
   
   
   ## SORTIE ##
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
-  filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
+  filter_output_dir <- file.path(output_dir, "2. Filtre_de_Bjorneraas")
   if (!dir.exists(filter_output_dir)) {
     dir.create(filter_output_dir, recursive = TRUE)
   }
@@ -318,12 +308,9 @@ if (F) {
   dev.off()
 }
 
- 
-
-#### 3. FILTERING CATLOG DATA ####
+#### 2.1 FILTERING CATLOG DATA ####
 #--------------------------------#
-
-if (F) {
+if (FALSE) {
   # Chargement des fonctions nécessaires
   source(file.path(functions_dir, "Functions_filtering.R"))
   
@@ -338,7 +325,7 @@ if (F) {
   IFF_data <- read.csv(IIF, stringsAsFactors = FALSE, encoding = "UTF-8")
   
   ## SORTIES ##
-  filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
+  filter_output_dir <- file.path(output_dir, "2. Filtre_de_Bjorneraas")
   if (!dir.exists(filter_output_dir)) {
     dir.create(filter_output_dir, recursive = TRUE)
   }
@@ -391,134 +378,116 @@ if (F) {
     
     write.table(indicators, file=indicator_file, append = T, sep=',', row.names=F, col.names=F)
   }
+  
+  ######### FIN TRAVAUX : Adapatation avec OFB : Combe-Madame 2013
 }
 
-    ######### FIN TRAVAUX : Adapatation avec OFB : Combe-Madame 2013 
-
-
-
-
-
-
-
-
-
-
-
-#### 3.Bis FILTERING OFB DATA####
+#### 2.Bis FILTERING OFB DATA####
 #-----------------------------------#
+if (TRUE){
+  # Partie temporère se basant sur les données deja prélablement filtrés par l'OFB
+  # utilisant aussi le filtre de Bjorneraas. Mais dont les paramètres sont adaptés
+  # a un temp d'aquisition toutes les 30 minutes ! 
+  
+  
+  if (TYPE == "ofb"){
+    ## ENTREES ##
+    # Un dossier contenant les trajectoires brutes, au format Rdata issu des colliers OFB,
+    # rangées dans des sous-dossiers au nom de leurs alpages
+    raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
+    
+    # Un data.frame contenant les dates de pose et de retrait des colliers
+    # Doit contenir les colonnes "alpage", "date_pose" et "date_retrait"
+    AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
+    
+    # Vérification du format du fichier (souvent mal formaté, attention csv UTF8)
+    AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
+    
+    ## SORTIES ##
+    # Dossier de sortie "Filtre_de_Bjorneraas: 
+    
+    filter_output_dir <- file.path(output_dir, "2. Filtre_de_Bjorneraas")
+    if (!dir.exists(filter_output_dir)) {
+      dir.create(filter_output_dir, recursive = TRUE)
+    }
+    
+    # Un .RDS contenant les trajectoires filtrées (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment). Coordonnées en Lambert93.
+    output_rds_file = file.path(filter_output_dir, paste0("Catlog_",YEAR,"_filtered_",alpages,".rds"))
+    
+    
+    
+    ## CODE ##
+    files <- list.files(file.path(raw_data_dir, alpage), full.names = TRUE)
+    
+    data <- do.call(rbind, lapply(files, function(file) { 
+      # Chargement des fichiers en fonction du TYPE
+      data <-load_ofb_data_rdata(file)
+      data$ID <- basename(file)# Ajouter l'ID du fichier pour tracer son origine
+      return(data)
+    }))
+    
+    
+    # Récupération des dates de pose et de retrait du collier
+    beg_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M")
+    end_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M")
+    data = date_filter(data, beg_date, end_date) # Filtrage des données en fonction des dates de validité
+    
+    #Supprime les NA
+    
+    initial_count <- nrow(data)  # Nombre de lignes tot
+    data <- data %>% filter(!is.na(lat) & !is.na(lon))
+    removed_count <- initial_count - nrow(data)  # Nombre de lignes supprimées
+    print(paste(removed_count, "points with NA were removed. Remaining points:", nrow(data)))
+    
+    # Supprime les lignes où infoloc == "pb_bjorneraas"
+    
+    initial_count <- nrow(data)  # Mise à jour du nombre total avant ce filtre
+    data <- data %>% filter(infoloc != "pb_bjorneraas")
+    removed_bjorneraas_count <- initial_count - nrow(data)  # Nombre de lignes supprimées (pb_bjorneraas)
+    print(paste(removed_bjorneraas_count, "points with location issues (pb_bjorneraas) were removed. Remaining points:", nrow(data)))
+    
+    
+    
+    
+    
+    # Transformation des colonnes avant enregistrement pour s'adapter a la sortie CATLOG
+    data <- data %>%
+      rename(time = date) %>%  # Renomme 'date' en 'time'
+      mutate(
+        ID = sub("_.*", "", ID),  # Garde uniquement la partie avant "_" dans ID
+        alpage = alpage,          # Ajoute une colonne 'alpage' remplie avec la valeur de l'objet alpage
+        species = "brebis",        # Ajoute une colonne 'species' remplie avec "brebis"
+        race = "Merinos"
+      ) %>%
+      dplyr::select(-infoloc)  # Supprime la colonne 'infoloc'
+    
+    
+    # Enregistrement des données filtrées au format .RDS
+    saveRDS(data, output_rds_file)
+    
+    
+  }
+  
 
-# Partie temporère se basant sur les données deja prélablement filtrés par l'OFB
-# utilisant aussi le filtre de Bjorneraas. Mais dont les paramètres sont adaptés
-# a un temp d'aquisition toutes les 30 minutes ! 
 
 
-if (TYPE == "ofb"){
- ## ENTREES ##
- # Un dossier contenant les trajectoires brutes, au format Rdata issu des colliers OFB,
- # rangées dans des sous-dossiers au nom de leurs alpages
- raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
-
- # Un data.frame contenant les dates de pose et de retrait des colliers
- # Doit contenir les colonnes "alpage", "date_pose" et "date_retrait"
- AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
-
- # Vérification du format du fichier (souvent mal formaté, attention csv UTF8)
- AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
- 
- ## SORTIES ##
- # Dossier de sortie "Filtre_de_Bjorneraas: 
- 
- filter_output_dir <- file.path(output_dir, "Filtre_de_Bjorneraas")
- if (!dir.exists(filter_output_dir)) {
-   dir.create(filter_output_dir, recursive = TRUE)
- }
-
- # Un .RDS contenant les trajectoires filtrées (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment). Coordonnées en Lambert93.
- output_rds_file = file.path(filter_output_dir, paste0("Catlog_",YEAR,"_filtered_",alpages,".rds"))
-
-
-
- ## CODE ##
- files <- list.files(file.path(raw_data_dir, alpage), full.names = TRUE)
-
- data <- do.call(rbind, lapply(files, function(file) { 
-   # Chargement des fichiers en fonction du TYPE
-   data <-load_ofb_data_rdata(file)
-   data$ID <- basename(file)# Ajouter l'ID du fichier pour tracer son origine
-   return(data)
- }))
-
-
- # Récupération des dates de pose et de retrait du collier
- beg_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M")
- end_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M")
- data = date_filter(data, beg_date, end_date) # Filtrage des données en fonction des dates de validité
-
- #Supprime les NA
-
- initial_count <- nrow(data)  # Nombre de lignes tot
- data <- data %>% filter(!is.na(lat) & !is.na(lon))
- removed_count <- initial_count - nrow(data)  # Nombre de lignes supprimées
- print(paste(removed_count, "points with NA were removed. Remaining points:", nrow(data)))
-
- # Supprime les lignes où infoloc == "pb_bjorneraas"
- 
- initial_count <- nrow(data)  # Mise à jour du nombre total avant ce filtre
- data <- data %>% filter(infoloc != "pb_bjorneraas")
- removed_bjorneraas_count <- initial_count - nrow(data)  # Nombre de lignes supprimées (pb_bjorneraas)
- print(paste(removed_bjorneraas_count, "points with location issues (pb_bjorneraas) were removed. Remaining points:", nrow(data)))
- 
- 
- 
- 
- 
- # Transformation des colonnes avant enregistrement pour s'adapter a la sortie CATLOG
- data <- data %>%
-   rename(time = date) %>%  # Renomme 'date' en 'time'
-   mutate(
-     ID = sub("_.*", "", ID),  # Garde uniquement la partie avant "_" dans ID
-     alpage = alpage,          # Ajoute une colonne 'alpage' remplie avec la valeur de l'objet alpage
-     species = "brebis",        # Ajoute une colonne 'species' remplie avec "brebis"
-     race = "Merinos"
-   ) %>%
-   dplyr::select(-infoloc)  # Supprime la colonne 'infoloc'
- 
- 
- # Enregistrement des données filtrées au format .RDS
- saveRDS(data, output_rds_file)
- 
- 
 }
 
-
-
-
-
-
-
-
-
-
-
-
-#### 4. HMM FITTING #### 
+#### 3. HMM FITTING #### 
 #----------------------#
-if (F) {
+if (FALSE) {
   library(snow)
   library(stats)
-  # Movement modelling packages
   library(momentuHMM)
   library(adehabitatLT)
   library(adehabitatHR)
-  # Libraries RMarkdown
   library(knitr)
   library(rmarkdown)
   source(file.path(functions_dir, "Functions_HMM_fitting.R"))
   
   # ENTREES
   # Un .RDS contenant les trajectoires filtrées
-  input_rds_file <- file.path(output_dir, "Filtre_de_Bjorneraas", paste0("Catlog_", YEAR, "_filtered_", alpage, ".rds"))
+  input_rds_file <- file.path(output_dir, "2. Filtre_de_Bjorneraas", paste0("Catlog_", YEAR, "_filtered_", alpage, ".rds"))
   
   # Un data.frame contenant la correspondance entre colliers et alpages. Doit contenir les colonnes  "ID", "Alpage" et "Periode d’echantillonnage"
   individual_info_file <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"), paste0(YEAR, "_colliers_poses.csv"))
@@ -526,23 +495,19 @@ if (F) {
   
   
   # Charger le fichier des périodes d'échantillonnage
-  sampling_period_file <- file.path(output_dir, "Sampling_Periods", paste0("Sampling_Periods_", YEAR, "_", alpage, ".rds"))
+  sampling_period_file <- file.path(output_dir, "0. Sampling_Periods", paste0("Sampling_Periods_", YEAR, "_", alpage, ".rds"))
   sampling_periods <- readRDS(sampling_period_file)
-  
-  
-  
-  # Les alpages à traiter
-  alpages = ALPAGES
+  sampling_table <- readRDS(sampling_period_file)
   
   # SORTIES
   
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
-  filter_output_dir <- file.path(output_dir, "HMM_comportement")
+  filter_output_dir <- file.path(output_dir, "3. HMM_comportement")
   if (!dir.exists(filter_output_dir)) {
     dir.create(filter_output_dir, recursive = TRUE)
   }
   # Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
-  output_rds_file = file.path(output_dir, "HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
+  output_rds_file = file.path(output_dir, "3. HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
   
   
   
@@ -622,9 +587,9 @@ if (F) {
   
   
   
-  
-  
-  
+  startTime <- Sys.time()
+  par_HMM_fit_ancienne(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir)
+  endTime <- Sys.time()
   
   
   
@@ -663,19 +628,8 @@ if (F) {
   
   
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   startTime <- Sys.time()
-  results <- par_HMM_fit_test(data, run_parameters_list, ncores = ncores, individual_info_file, output_dir)
+  results <- par_HMM_fit_test(data, run_parameters_list, ncores, individual_info_file, sampling_table, output_dir)
   endTime <- Sys.time()
   
  
@@ -703,7 +657,10 @@ for (alpage in unique(individual_alpages)) {
 
 ### SAVE RESULTING TRAJECTORIES
 data_hmm <- do.call("rbind", lapply(results, function(result) result$data))
+
 viterbi_trajectory_to_rds(data_hmm, output_rds_file, individual_info_file)
+
+
 
 }
 
@@ -994,7 +951,7 @@ source(file.path(functions_dir, "Functions_flock_density.R"))
 
 # ENTREES
 # Un .RDS contenant les trajectoires catégorisées par comportement
-input_rds_file <- file.path(output_dir, "HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds"))
+input_rds_file <- file.path(output_dir, "3. HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds"))
 
 # Un data.frame contenant les tailles de troupeaux et les évolutions des tailles en fonction de la date
 flock_size_file <- file.path(raw_data_dir, paste0(YEAR, "_tailles_troupeaux.csv"))
