@@ -2385,6 +2385,61 @@ viterbi_trajectory_to_rds <- function(data_hmm, output_file, individual_info_fil
 }
 
 
+viterbi_trajectory_to_rds <- function(data_hmm, output_file, individual_info_file) {
+  cat("[INFO] Adaptation et sauvegarde des trajectoires HMM en cours...\n")
+  flush.console()
+  
+  # Chargement des informations individuelles
+  if (!file.exists(individual_info_file)) {
+    stop("[ERREUR] Fichier `individual_info_file` introuvable : ", individual_info_file)
+  }
+  individual_info <- read.csv(individual_info_file, header = TRUE, stringsAsFactors = FALSE)
+  
+  # Vérification des colonnes requises dans le fichier individuel
+  required_cols <- c("Collier", "Alpage", "Espece", "Race")
+  missing_cols <- setdiff(required_cols, colnames(individual_info))
+  if (length(missing_cols) > 0) {
+    stop("[ERREUR] Colonnes manquantes dans `individual_info_file` : ", 
+         paste(missing_cols, collapse = ", "))
+  }
+  
+  # Suppression des colonnes inutiles provenant de data_hmm
+  data_save <- as.data.frame(subset(data_hmm, select = -c(step, angle)))
+  
+  # Conversion des états numériques en labels
+  stateNames <- c("Repos", "Paturage", "Deplacement")
+  data_save$state <- factor(stateNames[data_save$state], levels = stateNames)
+  
+  # Suppression des valeurs manquantes pour la colonne x
+  data_save <- data_save[!is.na(data_save$x), ]
+  
+  # Fusion des données avec les informations individuelles
+  merged_data <- merge(data_save, individual_info, by.x = "ID", by.y = "Collier", all.x = TRUE)
+  
+  if (any(is.na(merged_data$Alpage))) {
+    cat("[AVERTISSEMENT] Certains individus n'ont pas trouvé d'alpage dans `individual_info_file`.\n")
+  }
+  
+  # Sélection des colonnes finales dans l'ordre souhaité
+  # On conserve : ID, time, x, y, hour, state, state_proba, alpage, Espece, Race
+  final_data <- merged_data[, c("ID", "time", "x", "y", "hour", "state", "state_proba", "alpage", "Espece", "Race")]
+  # Renommage des colonnes pour obtenir species et race
+  colnames(final_data)[colnames(final_data) == "Espece"] <- "species"
+  colnames(final_data)[colnames(final_data) == "Race"]   <- "race"
+  
+  # Le final_data aura exactement ces colonnes dans cet ordre :
+  # ID, time, x, y, hour, state, state_proba, alpage, species, race
+  
+  # Enregistrement des nouvelles données (remplacement complet)
+  tryCatch({
+    saveRDS(final_data, file = output_file)
+    cat("[INFO] Sauvegarde réussie dans : ", output_file, "\n")
+  }, error = function(e) {
+    cat("[ERREUR] Impossible d'enregistrer le fichier RDS !\nMessage: ", e$message, "\n")
+  })
+  
+  flush.console()
+}
 
 
 
