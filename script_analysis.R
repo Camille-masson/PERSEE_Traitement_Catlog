@@ -398,17 +398,16 @@ if (FALSE){
     
     # BY day and by state 
     
+    # calcul du chargement basé sur une grille automatique (pixélisation)
+    if(TRUE){
+    flock_load_by_day_and_state_to_rds_kernelbb_Auto_grid(data, alpage_save_dir,state_daily_rds_prefix, flock_sizes,prop_time_collar_on)
+    }
     
-    flock_load_by_day_and_state_to_rds_kernelbb(
-      data, 
-      alpage_save_dir,  
-      state_daily_rds_prefix, 
-      flock_sizes, 
-      prop_time_collar_on
-    )
+    # calcul du chargement basé sur le raster NDVI (inadapté pour les autres utilisateurs)
+    if(FALSE){
+    flock_load_by_day_and_state_to_rds_kernelbb_NDVI_grid(data, grid, save_dir, save_rds_name, flock_sizes, prop_time_collar_on)
+    }
     
-    
-    gc()
     
     #Fusion des fichier indiv
     merged_file <- flock_merge_rds_files(alpage_save_dir, state_daily_rds_prefix)
@@ -450,9 +449,6 @@ if (FALSE){
     
     rm(charge)
   }
-
-
-
 
 
 
