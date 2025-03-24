@@ -112,7 +112,7 @@ filter_one_collar <- function(traject, collar_file, output_rds_file, alpage_name
     # OUPUTS
     #    a one-row data.frame of performance indicators of the collar: name (collar ID), worked_until_end (1 if the collar didn’t stop working until 24 hours before beg_date), nloc (number of relocations) and error_perc (percentage of relocations removed by Bjoneraas2010 filter)
 
-    collar_ID = strsplit(collar_file, split = "_")[[1]][1]
+  collar_ID <- substr(basename(collar_file), 1, 3)
 
     beg_date = as.POSIXct(get_individual_info(collar_ID, individual_info_file, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M:%S")
     end_date = as.POSIXct(get_individual_info(collar_ID, individual_info_file, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M:%S")
