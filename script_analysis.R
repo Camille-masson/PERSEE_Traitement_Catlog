@@ -9,9 +9,9 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse
-YEAR = 2024
-alpage = "Sanguiniere"
-alpages = "Sanguiniere"
+YEAR = 9999
+alpage = "Alpage_demo"
+alpages = "Alpage_demo"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -49,7 +49,7 @@ if (TRUE) {
     collar_dir <- file.path(raw_data_dir, alpage) # Chemin Dossier GPS contenant les fichier de l'alpage
     collar_files <- list.files(collar_dir, full.names = TRUE) # Liste des CSV de ce dossier (les différents colliers)
     lapply(collar_files, function(collar_f) {
-      collar_ID <- strsplit(basename(collar_f), split = "_")[[1]][1] # Extraction de l'id du collier (forme = C00_000000 -> C00)
+      collar_ID <- substr(basename(collar_f), 1, 3)# Extraction de l'id du collier (forme = C00_000000 -> C00)
       load_catlog_data(collar_f) %>% # Cargement des données GPS brut
         slice(which(row_number() %% 30 == 10)) %>% #Garde un point GPS tout les 30 mesures
         mutate(ID = collar_ID, date = lubridate::format_ISO8601(date)) %>% # Convertir date et heure au bon format avec lubridate
@@ -59,13 +59,13 @@ if (TRUE) {
     writeVector(filename = output_file, overwrite = TRUE) # Données au format GPKG
 }
 
-
 #### 2.1 BJONERAAS FILTER CALIBRATION ####
 #--------------------------------------#
 if (FALSE) {
   # Chargement des fonctions nécessaires
   source(file.path(functions_dir, "Functions_filtering.R"))
   source(file.path(functions_dir, "Functions_map_plot.R"))
+  source(file.path(functions_dir, "Functions_check_metadata.R"))
   
   ## ENTREES ##
   # Un dossier contenant les trajectoires brutes, au format csv issu des colliers Catlog,
@@ -75,9 +75,13 @@ if (FALSE) {
   # Un data.frame contenant les dates de pose et de retrait des colliers
   # Doit contenir les colonnes "alpage", "date_pose" et "date_retrait"
   AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
+  check_and_correct_csv(csv_path = AIF)
+  
   
   # Vérification du format du fichier (souvent mal formaté, attention csv UTF8)
   AIF_data <- read.csv(AIF, sep = ",", header = TRUE, row.names = NULL, check.names = FALSE, encoding = "UTF-8")
+  
+  str(AIF_data)
   
   ## SORTIE ##
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
@@ -102,8 +106,8 @@ if (FALSE) {
   }))
   
   # Récupération des dates de pose et de retrait du collier
-  beg_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M")
-  end_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M")
+  beg_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_pose"), tz="GMT", format="%d/%m/%Y %H:%M:%S")
+  end_date = as.POSIXct(get_alpage_info(alpage, AIF, "date_retrait"), tz="GMT", format="%d/%m/%Y %H:%M:%S")
   data = date_filter(data, beg_date, end_date) # Filtrage des données en fonction des dates de validité
   
   # Projection des données en Lambert93 (EPSG:2154) à partir de WGS84 (EPSG:4326)
@@ -172,15 +176,16 @@ if (FALSE) {
 if (FALSE) {
   # Chargement des fonctions nécessaires
   source(file.path(functions_dir, "Functions_filtering.R"))
+  source(file.path(functions_dir, "Functions_check_metadata.R"))
   
   ## ENTREES ##
   # Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages. Coordonnées en WSG84. Le nom des fichiers, sous la forme "ID_quelquechose.csv", sera utilisé pour déterminer l’ID du collier qui doit comporter 3 caractères.
   raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
   # Un fichier contenant les informations sur chaque individu équipé, les dates de pose et de retrait des colliers, ainsi que la proportion de temps pour laquelle les colliers sont programmés pour être allumés (18h par jour = 0.75). Doit contenir les colonnes "Collier", "Alpage", "Espece", "Race", "date_pose", "date_retrait" et "proportion_jour_allume"
   IIF = file.path(raw_data_dir, paste0(YEAR,"_colliers_poses.csv"))
+  check_and_correct_csv(IIF)
+  str(read.csv(IIF, stringsAsFactors = FALSE, encoding = "UTF-8"))
   
-  #Load and vérife data collier pose (format)
-  IFF_data <- read.csv(IIF, stringsAsFactors = FALSE, encoding = "UTF-8")
   
   
   ## SORTIES ##
@@ -242,7 +247,6 @@ if (FALSE) {
   library(momentuHMM)
   library(adehabitatLT)
   library(adehabitatHR)
-  # Libraries RMarkdown
   library(knitr)
   library(rmarkdown)
   source(file.path(functions_dir, "Functions_HMM_fitting.R"))
@@ -265,7 +269,7 @@ if (FALSE) {
   }
   
   # Création du sous-dossier pour stocker les résultats individuels sous forme d'un PDF
-  hmm_pdf_case <- file.path(filter_output_dir, paste0("Output_PDF_", alpage))
+  hmm_pdf_case <- file.path(filter_output_dir, paste0("Output_PDF_", YEAR, "_",alpage))
   if (!dir.exists(hmm_pdf_case)) {
     dir.create(hmm_pdf_case, recursive = TRUE)
   }
@@ -306,46 +310,35 @@ if (FALSE) {
   )
   run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters)
   
+  # Verifié la connéxion intenert
   startTime = Sys.time()
-  if(FALSE){
-  results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 120, output_dir)
-  }
-  
-  if(TRUE){
-  results <- par_HMM_fit_test_1(data, run_parameters, ncores,
-                             individual_info_file ,
-                             sampling_period = 120,
-                             output_dir = hmm_pdf_case)
-  }
+  results = par_HMM_fit(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 120, output_dir = hmm_pdf_case)
   endTime = Sys.time()
-  # Verifié la connéxion intenert 
-  
-  
-  ##SUMMARIZE MODEL FITTING BY ALPAGE in rmarkdown PDFs (A revoir)
-  parameters_df <- parameters_to_data.frame(run_parameters)
-  
+   
   
   # A revoir !
-  individual_IDs <- sapply(results, function(hmm) hmm$data$ID[1])
-  individual_alpages <- get_individual_alpage(individual_IDs, individual_info_file)
-  for (alpage in unique(individual_alpages)) {
-    res_index  <- individual_alpages == alpage
-    data_alpage <- do.call("rbind", lapply(results[res_index], function(result) result$data))
-    results_df <- do.call("rbind", lapply(results[res_index], hmm_result_to_data.frame))
+  ##SUMMARIZE MODEL FITTING BY ALPAGE in rmarkdown PDFs (A revoir)
+  #parameters_df <- parameters_to_data.frame(run_parameters)
+  
+  #individual_IDs <- sapply(results, function(hmm) hmm$data$ID[1])
+  #individual_alpages <- get_individual_alpage(individual_IDs, individual_info_file)
+  #for (alpage in unique(individual_alpages)) {
+    #res_index  <- individual_alpages == alpage
+    #data_alpage <- do.call("rbind", lapply(results[res_index], function(result) result$data))
+    #results_df <- do.call("rbind", lapply(results[res_index], hmm_result_to_data.frame))
     
-    runs_to_pdf_2(alpage, parameters_df, results_df, data_alpage , 
-                paste(round(difftime(endTime, startTime, units='mins'),2), "min"), 
-                output_dir, 
-                file.path(output_dir, "3. HMM_comportement", paste0("HMM_fitting_", YEAR, "_", alpage, ".pdf")), 
-                show_performance_indicators = FALSE)
-  }
+    #runs_to_pdf_2(alpage, parameters_df, results_df, data_alpage , 
+                #paste(round(difftime(endTime, startTime, units='mins'),2), "min"), 
+                #output_dir, 
+                #file.path(output_dir, "3. HMM_comportement", paste0("HMM_fitting_", YEAR, "_", alpage, ".pdf")), 
+                #show_performance_indicators = FALSE)
+  #}
   # A revoir ! : fonction Functions/HMM_fit_template.Rmd does not exist
   
   ### SAVE RESULTING TRAJECTORIES
   data_hmm <- do.call("rbind", lapply(results, function(result) result$data))
   viterbi_trajectory_to_rds(data_hmm, output_rds_file, individual_info_file)
 }
-
 
 #### 4. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
 #-------------------------------------------------------------#
@@ -392,9 +385,11 @@ if (FALSE){
     data <- readRDS(input_rds_file)
     data <- data[data$alpage == alpage,]
     
+    if(FALSE){
     # Chargement du raster de phénologie avec le bon chemin
     raster_file <- file.path(raster_dir, paste0("ndvis_", YEAR,"_",alpage, "_pheno_metrics.tif"))
     pheno_t0 <- get_raster_cropped_L93(raster_file, get_minmax_L93(data, 100), reproject = TRUE, band = 2, as = "SpatialPixelDataFrame")
+    }
     
     # Définition du dossier de stockage spécifique à l'alpage
     alpage_save_dir <- file.path(save_dir, paste0(YEAR, "_", alpage))
@@ -404,15 +399,14 @@ if (FALSE){
     # BY day and by state 
     
     
-    
     flock_load_by_day_and_state_to_rds_kernelbb(
       data, 
-      pheno_t0, 
       alpage_save_dir,  
       state_daily_rds_prefix, 
       flock_sizes, 
       prop_time_collar_on
     )
+    
     
     gc()
     

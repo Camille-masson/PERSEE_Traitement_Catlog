@@ -646,3 +646,146 @@ scale_step_parameters_to_resampling_ratio <- function(run_parameters) {
 
     return(run_parameters)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Fonction parallèle modifiée
+par_HMM_fit <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
+  # Paralelized wrapper for hmm_fit
+  print("+++ momentuHMM parallel RUN +++")
+  startTime <- Sys.time()
+  
+  clus <- makeCluster(ncores, outfile = '')
+  clusterExport(clus, as.list(lsf.str(.GlobalEnv)))
+  clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
+  
+  # Chargement des librairies et fonctions dans les clusters
+  clusterCall(clus, function() {
+    options(warn = -1)
+    suppressPackageStartupMessages(library(tidyverse))
+    theme_set(theme_bw())
+    library(lubridate)
+    library(momentuHMM)
+    library(adehabitatLT)
+    library(sf)
+    library(sp)
+    library(terra)
+    source("Functions/Functions_utility.R")  # Courtesy Théo Michelot
+    BACKGROUND_TYPE <- "BDALTI"
+    source("Functions/Functions_map_plot.R")
+    source("Functions/Constants.R")
+    options(warn = 0)
+  })
+  
+  results <- parLapply(clus, unique(data$ID), function(ID) {
+    # Récupération de l'alpage pour cet individu
+    alpage <- get_individual_alpage(ID, individual_info_file)
+    print(paste0("ID: ", ID, " - Alpage récupéré : ", alpage))
+    
+    # Récupérer la période d'échantillonnage propre à l'individu
+    sampling_period_ind <- get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
+    
+    # On utilise directement le dossier fourni (output_dir) pour stocker le PDF
+    pdf_folder <- output_dir
+    
+    # Appel de la fonction hmm_fit en passant pdf_folder
+    return(hmm_fit(data[data$ID == ID, ], run_parameters, pdf_folder, sampling_period_ind))
+  })
+  
+  stopCluster(clus)
+  print(Sys.time() - startTime)
+  return(results)
+}
+
+
+### Fonction de fitting modifiée
+hmm_fit <- function(data, runPar, output_dir, sampling_period) {
+  # Extraction de l'ID de l'individu
+  ID = data$ID[1]
+  
+  ### DATA PREPARATION
+  data_hmm <- regularise_trajectories(data, sampling_period)
+  if (runPar$rollavg) {
+    data_hmm <- rolling_averaging_trajectories(data_hmm, conv = runPar$rollavg_convolution)
+  }
+  data_hmm <- resample_trajectories(data_hmm, runPar$resampling_ratio, runPar$resampling_first_index)
+  data_hmm <- prepare_hmm_trajectories(data_hmm)
+  
+  knownStates <- rep(NA, nrow(data_hmm))
+  
+  if(runPar$knownRestingStates) {
+    # Si on considère certaines périodes comme repos, on définit les états connus
+    knownStates[(data_hmm$hour > 3 && data_hmm$hour < 3.5) ||
+                  (data_hmm$hour > 20.5 && data_hmm$hour < 21)] <- 1
+  }
+  
+  ### MODEL FITTING
+  stateNames = c("Repos", "Paturage", "Deplacement")
+  run <- fitHMM(data_hmm,
+                nbStates = 3,
+                dist = runPar$dist,
+                DM = runPar$DM,
+                Par0 = runPar$Par0,
+                estAngleMean = list(angle = TRUE),
+                fixPar = runPar$fixPar,
+                stateNames = stateNames,
+                knownStates = knownStates,
+                formula = runPar$covariants,
+                optMethod = "Nelder-Mead")
+  
+  # Calcul des états les plus probables et de leurs probabilités
+  run$data$state <- viterbi(run)
+  state_proba <- stateProbs(run)
+  run$data$state_proba <- NA
+  for (i in 1:nrow(run$data)) {
+    run$data$state_proba[i] <- state_proba[i, run$data$state[i]]
+  }
+  
+  # Enregistrement du PDF directement dans le dossier output_dir
+  pdf_file <- file.path(output_dir, paste0(ID, ".pdf"))
+  plot_results(run, pdf_file)
+  
+  # Nettoyage et réorganisation des données
+  run$data <- run$data[!is.na(run$data$x), ]
+  run$data <- run$data[order(run$data$time), ]
+  
+  # Restauration de l'ID original
+  run$data$ID <- ID
+  
+  return(run)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
