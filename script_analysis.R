@@ -383,7 +383,7 @@ if (FALSE) {
 }
 
 #### 2.Bis FILTERING OFB DATA####
-#-----------------------------------#
+#-------------------------------#
 if (TRUE){
   # Partie temporère se basant sur les données deja prélablement filtrés par l'OFB
   # utilisant aussi le filtre de Bjorneraas. Mais dont les paramètres sont adaptés
@@ -664,393 +664,119 @@ viterbi_trajectory_to_rds(data_hmm, output_rds_file, individual_info_file)
 
 }
 
-
-
-
-
-
-
-
-
-
-
-#### 4. HMM FITTING #### 
-#----------------------#
-if (F) {
-  library(snow)
-  library(stats)
-  # Movement modelling packages
-  library(momentuHMM)
-  library(adehabitatLT)
+#### 4. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
+#-------------------------------------------------------------#
+if (FALSE){
+  
+  
   library(adehabitatHR)
-  # Libraries RMarkdown
-  library(knitr)
-  library(rmarkdown)
-  source(file.path(functions_dir, "Functions_HMM_fitting.R"))
+  library(data.table)
+  library(snow)
+  source(file.path(functions_dir, "Functions_map_plot.R"))
+  source(file.path(functions_dir, "Functions_flock_density.R"))
   
   # ENTREES
-  # Un .RDS contenant les trajectoires filtrées
-  input_rds_file <- file.path(output_dir, "Filtre_de_Bjorneraas", paste0("Catlog_", YEAR, "_filtered_", alpage, ".rds"))
+  # Un .RDS contenant les trajectoires catégorisées par comportement
+  input_rds_file <- file.path(output_dir, "3. HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds"))
   
-  # Un data.frame contenant la correspondance entre colliers et alpages. Doit contenir les colonnes  "ID", "Alpage" et "Periode d’echantillonnage"
-  individual_info_file <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"), paste0(YEAR, "_colliers_poses.csv"))
-  individual_info_file_data <- read.csv(individual_info_file, stringsAsFactors = FALSE, encoding = "UTF-8")
+  
+  # Un data.frame contenant les tailles de troupeaux et les évolutions des tailles en fonction de la date
+  flock_size_file <- file.path(raw_data_dir, paste0(YEAR, "_tailles_troupeaux.csv"))
+  flock_size_file_data <- read.csv(flock_size_file, stringsAsFactors = FALSE, encoding = "UTF-8")
   # Les alpages à traiter
-  alpages = ALPAGES
+  
   
   # SORTIES
+  # Dossier de sortie
+  save_dir <- file.path(output_dir, "4. Chargements_calcules")
   
-  # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas
-  filter_output_dir <- file.path(output_dir, "HMM_comportement")
-  if (!dir.exists(filter_output_dir)) {
-    dir.create(filter_output_dir, recursive = TRUE)
-  }
-  # Un .RDS contenant les trajectoires catégorisées par comportement (les nouvelles trajectoires sont ajoutées à la suite des trajectoires traitées précédemment)
-  output_rds_file = file.path(output_dir, "HMM_comportement", paste0("Catlog_",YEAR,"_",alpage,"_viterbi.rds"))
+  # Un .RDS par alpage contenant les charges journalières par comportement
+  state_daily_rds_prefix <- paste0("by_day_and_state_", YEAR, "_")
+  # Un .RDS par alpage contenant les charges journalières
+  daily_rds_prefix <- paste0("by_day_", YEAR, "_")
+  # Un .RDS par alpage contenant les charges par comportement
+  state_rds_prefix <- paste0("by_state_", YEAR, "_")
+  # Un .RDS par alpage contenant la charge totale sur toute la saison
+  total_rds_prefix <- paste0("total_", YEAR, "_")
   
+  h <- 25 # Distance caractéristique pour calculer le chargement
   
-  #Function 
-  
-  ### HMM fitting and plotting functions
-  hmm_fit <- function(data, runPar, alpage_directory, sampling_period) {
-    # Fit a momentuHMM hmm on one individual’s sub-trajectories and save the resulting figures.
-    # INPUTS :
-    #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
-    #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
-    #   alpage_directory : a directory to save the resulting figures of this individual’s hmm fit
-    # OUTPUT : the momemtuHMM object, with a $data field containing the original trajectory (or sub-trajectories), ordered by time,
-    #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
+  for (alpage in alpages) {
+    flock_sizes <- get_flock_size_through_time(alpage, flock_size_file)
+    prop_time_collar_on <- get_alpage_info(alpage, AIF, "proportion_jour_allume")
     
-    ### DATA PREPARATION
-    ID = data$ID[1]
-    data_hmm <- regularise_trajectories(data, sampling_period)
-    if (runPar$rollavg) data_hmm <- rolling_averaging_trajectories(data_hmm, conv= runPar$rollavg_convolution)
-    data_hmm <- resample_trajectories(data_hmm, runPar$resampling_ratio, runPar$resampling_first_index)
-    data_hmm <- prepare_hmm_trajectories(data_hmm)
+    # Chargement des données filtrées pour l'alpage
+    data <- readRDS(input_rds_file)
+    data <- data[data$alpage == alpage,]
     
-    knownStates <- rep(NA, nrow(data_hmm))
-    
-    if(runPar$knownRestingStates) { # if we consider some resting states to be known, then the first and last half-hours of record period are considered to be resting states
-      knownStates[(data_hmm$hour > 3 && data_hmm$hour < 3.5) || (data_hmm$hour > 20.5 && data_hmm$hour < 21 )] <- 1
+    if(FALSE){
+      # Chargement du raster de phénologie avec le bon chemin
+      raster_file <- file.path(raster_dir, paste0("ndvis_", YEAR,"_",alpage, "_pheno_metrics.tif"))
+      pheno_t0 <- get_raster_cropped_L93(raster_file, get_minmax_L93(data, 100), reproject = TRUE, band = 2, as = "SpatialPixelDataFrame")
     }
     
-    ### MODEL FITTING
-    stateNames = c("Repos", "Paturage", "Deplacement")
-    run <- fitHMM(data_hmm, nbStates = 3, dist = runPar$dist, DM=runPar$DM, Par0 = runPar$Par0,
-                  estAngleMean=list(angle=TRUE), fixPar = runPar$fixPar,
-                  stateNames = stateNames,
-                  knownStates = knownStates,
-                  formula = runPar$covariants,
-                  optMethod = "Nelder-Mead")
+    # Définition du dossier de stockage spécifique à l'alpage
+    alpage_save_dir <- file.path(save_dir, paste0(YEAR, "_", alpage))
+    if (!dir.exists(alpage_save_dir)) dir.create(alpage_save_dir, recursive = TRUE)
     
-    # Get the most likely states and their probabilities
-    run$data$state <- viterbi(run)
-    state_proba = stateProbs(run)
-    run$data$state_proba = NA
-    for (i in 1:nrow(run$data)) { run$data$state_proba[i] = state_proba[i, run$data$state[i]] }
     
-    # Plot HMM results and trajectories
-    dir.create(paste0(alpage_directory,"individual_trajectories/"), recursive = TRUE)
-    plot_results(run, paste0(alpage_directory,"individual_trajectories/",ID))
+    # BY day and by state 
     
-    # Remove NA
-    run$data <- run$data[!is.na(run$data$x),]
-    # Reorder data by time
-    run$data <- run$data[order(run$data$time),]
+    # calcul du chargement basé sur une grille automatique (pixélisation)
+    if(TRUE){
+      flock_load_by_day_and_state_to_rds_kernelbb_Auto_grid(data, alpage_save_dir,state_daily_rds_prefix, flock_sizes,prop_time_collar_on)
+    }
     
-    # Restore original ID
-    run$data$ID <- ID
+    # calcul du chargement basé sur le raster NDVI (inadapté pour les autres utilisateurs)
+    if(FALSE){
+      flock_load_by_day_and_state_to_rds_kernelbb_NDVI_grid(data, grid, save_dir, save_rds_name, flock_sizes, prop_time_collar_on)
+    }
     
-    return(run)
-  }
-  
-  
-  
-  par_HMM_fit_test <- function(data, run_parameters, ncores, individual_info_file, sampling_period, output_dir) {
-    # Paralelized wrapper for hmm_fit
-    # Fit a momentuHMM hmm on one several individuals’ trajectories and save the resulting figures.
-    # INPUTS :
-    #   data : a data.frame containing a trajectory from a unique individual described as an ID, time, x and y fields.
-    #   runPar : a list of parameters to run the model with (see the parameters_to_data_frame function for an extensive list of parameters)
-    #   individual_info_file : path to the csv file containing information about every individual ID, must contain "ID", "Alpage" and "Periode d’echantillonnage" columns.
-    # OUTPUT : a list of the individual’s momentuHMM objects. Each momentuHMM object’s $data field contains the original trajectory (or sub-trajectories), ordered by time,
-    #          along with the viterbi states sequence, the state probabilities and the original ID (only the first ID is retained)
     
-    print(paste0("+++ momentuHMM parallel RUN +++"))
+    #Fusion des fichier indiv
+    merged_file <- flock_merge_rds_files(alpage_save_dir, state_daily_rds_prefix)
     
-    startTime <- Sys.time()
-    clus <- makeCluster(ncores, outfile='') # outfile='' is verbose option
-    clusterExport(clus, as.list(lsf.str(.GlobalEnv))) # export all loaded functions
-    clusterExport(clus, list("data", "run_parameters", "output_dir", "individual_info_file", "raster_dir", "CRS_L93"), envir = environment())
-    # Load libraries
-    clusterCall(clus, function() {
-      options(warn=-1)
-      # For the pipes
-      suppressPackageStartupMessages(library(tidyverse)) # includes ggplot2 and dplyr among others
-      theme_set(theme_bw()) # theme for ggplot2
-      library(lubridate)
-      # Movement modelling packages
-      library(momentuHMM)
-      # library(foieGras)
-      library(adehabitatLT)
-      # GIS packages
-      library(sf)
-      library(sp)
-      library(terra)
-      # Load functions and set paths
-      source("Functions/Functions_utility.R") # Courtesy Théo Michelot
-      BACKGROUND_TYPE = "BDALTI"
-      source("Functions/Functions_map_plot.R")
-      source("Functions/Constants.R")
-      options(warn=0)
+    
+    
+    rm(data)
+    
+    
+    charge <- readRDS(file.path(alpage_save_dir, paste0(state_daily_rds_prefix, alpage, ".rds")))
+    unique(charge$state)
+    
+    # By state
+    charge_state <- charge %>%
+      group_by(x, y, state) %>%
+      summarise(Charge = sum(Charge, na.rm = TRUE), .groups = 'drop') %>%
+      as.data.frame()
+    saveRDS(charge_state, file.path(alpage_save_dir, paste0(state_rds_prefix, alpage, ".rds")))
+    rm(charge_state)
+    
+    # By day
+    charge_day <- lapply(unique(charge$day), function(d) {
+      charge %>%
+        filter(day == d) %>%
+        group_by(x, y, day) %>%
+        summarise(Charge = sum(Charge, na.rm = TRUE), .groups = 'drop')
     })
+    charge_day <- as.data.frame(rbindlist(charge_day, use.names = TRUE))
+    saveRDS(charge_day, file.path(alpage_save_dir, paste0(daily_rds_prefix, alpage, ".rds")))
+    rm(charge_day)
     
-    results <- parLapply(clus, unique(data$ID),
-                         function(ID) {
-                           alpage = get_individual_alpage(ID, individual_info_file)
-                           
-                           # 🔍 Debugging : Vérifier si l'alpage est bien "alpage_demo"
-                           print(paste0("🔍 ID: ", ID, " - Alpage récupéré : ", alpage))
-                           
-                           sampling_period = get_individual_info(ID, individual_info_file, "Periode_echantillonnage")
-                           
-                           return(hmm_fit(data[data$ID==ID,], run_parameters, paste0(output_dir, alpage, "/"), sampling_period))
-                         }
-    )
+    # Total
+    charge_tot <- charge %>%
+      group_by(x, y) %>%
+      summarise(Charge = sum(Charge, na.rm = TRUE), .groups = 'drop') %>%
+      as.data.frame()
+    saveRDS(charge_tot, file.path(alpage_save_dir, paste0(total_rds_prefix, alpage, ".rds")))
+    rm(charge_tot)
     
-    stopCluster(clus)
-    endTime <- Sys.time()
-    print(paste("+++ Cluster total excecution time :", round(difftime(endTime, startTime, units='mins'),2), "min +++"))
-    
-    return(results)
+    rm(charge)
   }
   
   
   
-  
-  
-  
-  scale_step_parameters_to_resampling_ratio <- function(run_parameters) {
-    run_parameters$Par0$step[2] = run_parameters$resampling_ratio * run_parameters$Par0$step[2]
-    run_parameters$Par0$step[5] = sqrt(run_parameters$resampling_ratio) * run_parameters$Par0$step[5]
-    run_parameters$Par0$step[3] = run_parameters$resampling_ratio * run_parameters$Par0$step[3]
-    run_parameters$Par0$step[6] = sqrt(run_parameters$resampling_ratio) * run_parameters$Par0$step[6]
-    
-    return(run_parameters)
-  }
-  
-  
-  
-  #NOUVELLE FUNCTION
-  
-  # Définition d'un objet SAMPLING pour une gestion modulaire
-  get_sampling_parameters <- function(sampling_period) {
-    if (sampling_period < 10) {
-      resampling_ratio <- ceiling(10 / sampling_period)  # On ramène à 10 min
-      param_scaling_factor <- 10 / 2  # Facteur basé sur 2 min vers 10 min
-    } else {
-      resampling_ratio <- 1  # Pas de rééchantillonnage
-      param_scaling_factor <- sampling_period / 2  # Échelle basée sur 2 min
-    }
-    return(list(sampling_period = sampling_period, resampling_ratio = resampling_ratio, param_scaling_factor = param_scaling_factor))
-  }
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  ### LOADING DATA FOR ANALYSES
-  data = readRDS(input_rds_file)
-  data = data[data$species == "brebis",]
-  data = data[data$alpage %in% alpages,]
-  
-  
- 
-  
-  ### HMM FIT
-  run_parameters = list(
-    # Model
-    model = "HMM",
-    
-    # Resampling
-    resampling_ratio = 15,
-    resampling_first_index = 0,
-    rollavg = FALSE,
-    rollavg_convolution = c(0.15, 0.7, 0.15),
-    knownRestingStates = FALSE,
-    
-    # Observation distributions (step lengths and turning angles)
-    dist = list(step = "gamma", angle = "vm"),
-    # Design matrices to be used for the probability distribution parameters of each data stream
-    DM = list(angle=list(mean = ~1, concentration = ~1)),
-    # Covariants formula
-    covariants = ~cos(hour*3.141593/12), # ~1 if no covariants used
-    
-    # 3-state HMM
-    Par0 = list(step = c(10, 25, 50, 10, 15, 40), angle = c(tan(pi/2), tan(0/2), tan(0/2), log(0.5), log(0.5), log(3))),
-    fixPar = list(angle = c(tan(pi/2), tan(0/2), tan(0/2), NA, NA, NA))
-  )
-  run_parameters = scale_step_parameters_to_resampling_ratio(run_parameters)
-  
-  print(paste0("Par0 Step après Scaling : ", run_parameters$Par0$step))
-  
-  
-  startTime = Sys.time()
-  results = par_HMM_fit_test(data, run_parameters, ncores = ncores, individual_info_file, sampling_period = 120, output_dir)
-  endTime = Sys.time()
-  # Verifié la connéxion intenert 
-  
-
-
-
-
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### 5. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
-#-------------------------------------------------------------#
-library(adehabitatHR)
-library(data.table)
-library(snow)
-source(file.path(functions_dir, "Functions_map_plot.R"))
-source(file.path(functions_dir, "Functions_flock_density.R"))
-
-# ENTREES
-# Un .RDS contenant les trajectoires catégorisées par comportement
-input_rds_file <- file.path(output_dir, "3. HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds"))
-
-# Un data.frame contenant les tailles de troupeaux et les évolutions des tailles en fonction de la date
-flock_size_file <- file.path(raw_data_dir, paste0(YEAR, "_tailles_troupeaux.csv"))
-flock_size_file_data <- read.csv(flock_size_file, stringsAsFactors = FALSE, encoding = "UTF-8")
-# Les alpages à traiter
-alpages <- ALPAGES
-
-# SORTIES
-# Dossier de sortie
-save_dir <- file.path(output_dir, "Chargements_calcules")
-
-# Un .RDS par alpage contenant les charges journalières par comportement
-state_daily_rds_prefix <- paste0("by_day_and_state_", YEAR, "_")
-# Un .RDS par alpage contenant les charges journalières
-daily_rds_prefix <- paste0("by_day_", YEAR, "_")
-# Un .RDS par alpage contenant les charges par comportement
-state_rds_prefix <- paste0("by_state_", YEAR, "_")
-# Un .RDS par alpage contenant la charge totale sur toute la saison
-total_rds_prefix <- paste0("total_", YEAR, "_")
-
-h <- 25 # Distance caractéristique pour calculer le chargement
-
-for (alpage in alpages) {
-  flock_sizes <- get_flock_size_through_time(alpage, flock_size_file)
-  prop_time_collar_on <- get_alpage_info(alpage, AIF, "proportion_jour_allume")
-  
-  # Chargement des données filtrées pour l'alpage
-  data <- readRDS(input_rds_file)
-  data <- data[data$alpage == alpage,]
-  
-  # Chargement du raster de phénologie avec le bon chemin
-  raster_file <- file.path(raster_dir, paste0("ndvis_", YEAR, "_", alpage, "_pheno_metrics.tif"))
-  pheno_t0 <- get_raster_cropped_L93(raster_file, get_minmax_L93(data, 100), reproject = TRUE, band = 2, as = "SpatialPixelDataFrame")
-  
-  # Définition du dossier de stockage spécifique à l'alpage
-  alpage_save_dir <- file.path(save_dir, paste0(alpage, "_", YEAR))
-  if (!dir.exists(alpage_save_dir)) dir.create(alpage_save_dir, recursive = TRUE)
-  
- 
-  # BY day and by state 
-  
-    flock_load_by_day_and_state_to_rds_kernelbb(
-    data, 
-    pheno_t0, 
-    alpage_save_dir,  
-    state_daily_rds_prefix, 
-    flock_sizes, 
-    prop_time_collar_on
-  )
-  
-  gc()
-    
-  #Fusion des fichier indiv
-  merged_file <- flock_merge_rds_files(alpage_save_dir, state_daily_rds_prefix)
-  
-  
-  
-  rm(data)
-  
-  
-  charge <- readRDS(file.path(alpage_save_dir, paste0(state_daily_rds_prefix, alpage, ".rds")))
-  unique(charge$state)
-  
-  # By state
-  charge_state <- charge %>%
-    group_by(x, y, state) %>%
-    summarise(Charge = sum(Charge, na.rm = TRUE), .groups = 'drop') %>%
-    as.data.frame()
-  saveRDS(charge_state, file.path(alpage_save_dir, paste0(state_rds_prefix, alpage, ".rds")))
-  rm(charge_state)
-  
-  # By day
-  charge_day <- lapply(unique(charge$day), function(d) {
-    charge %>%
-      filter(day == d) %>%
-      group_by(x, y, day) %>%
-      summarise(Charge = sum(Charge, na.rm = TRUE), .groups = 'drop')
-  })
-  charge_day <- as.data.frame(rbindlist(charge_day, use.names = TRUE))
-  saveRDS(charge_day, file.path(alpage_save_dir, paste0(daily_rds_prefix, alpage, ".rds")))
-  rm(charge_day)
-  
-  # Total
-  charge_tot <- charge %>%
-    group_by(x, y) %>%
-    summarise(Charge = sum(Charge, na.rm = TRUE), .groups = 'drop') %>%
-    as.data.frame()
-  saveRDS(charge_tot, file.path(alpage_save_dir, paste0(total_rds_prefix, alpage, ".rds")))
-  rm(charge_tot)
-  
-  rm(charge)
-}
-
-
-
-
-
-
-
 
 
 

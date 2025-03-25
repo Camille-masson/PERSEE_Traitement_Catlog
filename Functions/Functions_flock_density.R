@@ -122,7 +122,7 @@ flock_load_from_daily_and_state_UD_kernelbb <- function(UD, n_points_state, n_po
             return()
 }
 
-
+#FONCTION ORIGINAL
 flock_load_by_day_and_state_to_rds_kernelbb <- function(data, grid, save_dir, save_rds_name, flock_sizes, prop_time_collar_on) {
     # Compute flock load by day and state
     # INPUTS
@@ -300,8 +300,8 @@ recompute_daily_flock_load_by_state <- function(charge_d, flock_size_d, prop_tim
 
 
 
-
-flock_load_by_day_and_state_to_rds_kernelbb <- function(data, grid, save_dir, save_rds_name, flock_sizes, prop_time_collar_on) {
+#FONCTION V1 avec les memes fonctionnalisté que l'original basé sur NDVI grid
+flock_load_by_day_and_state_to_rds_kernelbb_NDVI_grid <- function(data, grid, save_dir, save_rds_name, flock_sizes, prop_time_collar_on) {
   library(lubridate)
   library(tidyverse)
   library(adehabitatHR)
@@ -357,7 +357,6 @@ flock_load_by_day_and_state_to_rds_kernelbb <- function(data, grid, save_dir, sa
 
 
 
-
 flock_merge_rds_files <- function(save_dir, state_daily_rds_prefix) {
   # Lister tous les fichiers RDS générés
   all_files <- list.files(save_dir, pattern = paste0("^", state_daily_rds_prefix), full.names = TRUE)
@@ -394,4 +393,89 @@ flock_merge_rds_files <- function(save_dir, state_daily_rds_prefix) {
   return(output_file)
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+#FONCTION V2 base sur une grille automatique
+
+flock_load_by_day_and_state_to_rds_kernelbb_Auto_grid <- function(data, save_dir, save_rds_name, flock_sizes, prop_time_collar_on) {
+  library(lubridate)
+  library(tidyverse)
+  library(adehabitatHR)
+  library(raster)
+  
+  # Si 'grid' n'est pas déjà un SpatialPixelsDataFrame, on crée une grille de 10m x 10m.
+  if (!inherits(grid, "SpatialPixelsDataFrame")) {
+    buffer <- 100  # marge en mètres autour des points
+    xmin <- min(data$x) - buffer
+    xmax <- max(data$x) + buffer
+    ymin <- min(data$y) - buffer
+    ymax <- max(data$y) + buffer
+    ext_data <- extent(xmin, xmax, ymin, ymax)
+    r <- raster(ext_data, res = 10, crs = "+init=epsg:2154")  # Lambert-93
+    grid <- as(r, "SpatialPixelsDataFrame")
+  }
+  
+  # Ajout du jour dans les données (à partir de la colonne 'time')
+  data$day <- yday(data$time)
+  
+  # Vérification et création du dossier de sauvegarde
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir, recursive = TRUE)
+  }
+  
+  Tmax <- 42  # Max gap en minutes
+  Ds <- list(Repos = 1.25, Paturage = 3, Deplacement = 4.5)
+  
+  all_files <- c()  # Liste des fichiers RDS générés
+  
+  for (state in unique(data$state)) {
+    cat("Traitement de l'état :", state, "\n")
+    
+    save_rds_prefix <- file.path(save_dir, paste0(save_rds_name, "_", state, "_"))
+    days <- unique(data$day)
+    data_state <- data %>% filter(state == !!state)
+    
+    for (d in days) {
+      cat("Jour", d, "sur", max(days), "état", state, "\n")
+      
+      ltr <- data_state %>% filter(day == d) %>% mutate(time = as.POSIXct(time))
+      
+      if (nrow(ltr) > 0) {
+        ltr <- split_at_gap(ltr, max_gap = Tmax) 
+        ltr <- as.ltraj(xy = ltr[c("x", "y")], date = ltr$time, id = ltr$ID)
+        
+        hr <- kernelbb(ltr, sig1 = Ds[[state]], sig2 = 10, 
+                       grid = grid, same4all = FALSE, byburst = TRUE, 
+                       extent = 0.5, nalpha = 25)
+        
+        charge_jour <- flock_load_from_daily_and_state_UD_kernelbb(hr,
+                                                                   n_points_state = sum(data$day == d & data$state == state),
+                                                                   n_points_total = sum(data$day == d), 
+                                                                   flock_sizes[d], prop_time_collar_on)
+        
+        charge_jour$day <- d
+        charge_jour$state <- state
+        
+        save_file <- file.path(save_dir, paste0(save_rds_name, "_", state, "_", d, ".rds"))
+        saveRDS(charge_jour, file = save_file)
+        
+        all_files <- c(all_files, save_file)
+      }
+    }
+  }
+  
+  cat("Fichiers individuels générés !!!\n")
+  return(all_files)
+}
 
