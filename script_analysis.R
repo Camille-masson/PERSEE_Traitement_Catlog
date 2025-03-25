@@ -8,10 +8,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2021
-TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Sept-Laux"
-alpages <- "Sept-Laux"
+YEAR <- 2022
+TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
+alpage <- "Viso"
+alpages <- "Viso"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -34,7 +34,8 @@ if (FALSE){
   # Définition de la période d'échantillionage
   
   ## ENTREE ##
-  # Un dossier contenant les trajectoires brutes, au format csv issu des colliers catlog, rangées dans des sous-dossiers au nom de leurs alpages
+  # Un dossier contenant les trajectoires brutes
+  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
   
   
   
@@ -691,13 +692,13 @@ if (FALSE){
   save_dir <- file.path(output_dir, "4. Chargements_calcules")
   
   # Un .RDS par alpage contenant les charges journalières par comportement
-  state_daily_rds_prefix <- paste0("by_day_and_state_", YEAR, "_")
+  state_daily_rds_prefix <- paste0("degrade_by_day_and_state_", YEAR, "_")
   # Un .RDS par alpage contenant les charges journalières
-  daily_rds_prefix <- paste0("by_day_", YEAR, "_")
+  daily_rds_prefix <- paste0("degrade_by_day_", YEAR, "_")
   # Un .RDS par alpage contenant les charges par comportement
-  state_rds_prefix <- paste0("by_state_", YEAR, "_")
+  state_rds_prefix <- paste0("degrade_by_state_", YEAR, "_")
   # Un .RDS par alpage contenant la charge totale sur toute la saison
-  total_rds_prefix <- paste0("total_", YEAR, "_")
+  total_rds_prefix <- paste0("degrade_total_", YEAR, "_")
   
   h <- 25 # Distance caractéristique pour calculer le chargement
   
@@ -707,6 +708,42 @@ if (FALSE){
     
     # Chargement des données filtrées pour l'alpage
     data <- readRDS(input_rds_file)
+    
+    {
+      # IDs à conserver sans modification
+      ids_keep <- c("C31", "C32", "C33", "C34")
+      
+      # IDs pour lesquels on souhaite dégrader la fréquence (un point toutes les 30 minutes)
+      ids_degrade <- c("C35", "C36", "C37")
+      
+      # Pour les IDs à dégrader : regrouper par ID et par tranche de 30 minutes, et conserver la première observation
+      data_degrade <- data %>%
+        filter(ID %in% ids_degrade) %>%
+        group_by(ID, time_interval = floor_date(time, unit = "30 minutes")) %>%
+        slice(1) %>% 
+        ungroup() %>%
+        select(-time_interval)
+      
+      # Pour les autres IDs, on conserve les données telles quelles
+      data_keep <- data %>%
+        filter(ID %in% ids_keep)
+      
+      # Fusionner les deux jeux de données
+      data <- bind_rows(data_keep, data_degrade)
+      
+      # Afficher la structure du nouveau jeu de données
+      str(data)
+      
+      
+      
+      
+    }
+    
+    
+    
+    
+    
+    
     data <- data[data$alpage == alpage,]
     
     if(FALSE){
