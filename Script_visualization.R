@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2021
-TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Sept-Laux"
-alpages <- "Sept-Laux"
+YEAR <- 2024
+TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
+alpage <- "Cayolle"
+alpages <- c("Cayolle","Sanguiniere")
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -151,7 +151,7 @@ if (FALSE) {
     }
   
   #Indicateur : Charge_by_day
-  if (TRUE){
+  if (FALSE){
     res_raster <- 10 # ou la valeur que tu souhaites explicitement
     day_flock_load_tif_nostack(daily_rds_prefix, output_case_alpage, UP_file, alpage, alpage_info_file, YEAR, res_raster, CROP = "YES")
     
@@ -848,10 +848,109 @@ if (FALSE){
   
 }
 
-
-
-
-
+#### 10. Delta de chargement ####
+#-------------------------------#
+if (FALSE){
+  # Library 
+  source(file.path(functions_dir, "Functions_Indicateurs.R"))
+  
+  
+  # OBJET
+  
+  YEAR_1 = 2022
+  YEAR_2 = 2023
+  
+  # ENTREE
+  
+  #Dossier de sortie des indicateur pour la visualistaion
+  file_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
+  #Sous-dossier Indicateur traitée : Chargement
+  file_chargement_case <- file.path(output_visu_case, "Taux_chargement")
+  
+  #ANNEE 1
+  # Sous-sous-dossier alpage et années traitée : Chargement
+  file_case_alpage_YEAR_1 <- file.path(output_chargement_case, paste0(YEAR_1,"_",alpage))
+  
+  # Un .TIF par alpage contenant les charges par comportement
+  output_flock_repos_tif_YEAR_1 = file.path(file_case_alpage_YEAR_1, paste0("repos",YEAR_1,"_",alpage,".tif"))
+  output_flock_deplacement_tif_YEAR_1 = file.path(file_case_alpage_YEAR_1, paste0("deplacement",YEAR_1,"_",alpage,".tif"))
+  output_flock_paturage_tif_YEAR_1 = file.path(file_case_alpage_YEAR_1, paste0("paturage",YEAR_1,"_",alpage,".tif"))
+  # Un .TIF par alpage contenant la charge totale sur toute la saison
+  output_flock_tot_tif_YEAR_1 = file.path(file_case_alpage_YEAR_1, paste0("total_",YEAR_1,"_",alpage,".tif"))
+  
+  
+  #ANNEE 2
+  # Sous-sous-dossier alpage et années traitée : Chargement
+  file_case_alpage_YEAR_2 <- file.path(output_chargement_case, paste0(YEAR_2,"_",alpage))
+  
+  # Un .TIF par alpage contenant les charges par comportement
+  output_flock_repos_tif_YEAR_2 = file.path(file_case_alpage_YEAR_2, paste0("repos",YEAR_2,"_",alpage,".tif"))
+  output_flock_deplacement_tif_YEAR_2 = file.path(file_case_alpage_YEAR_2, paste0("deplacement",YEAR_2,"_",alpage,".tif"))
+  output_flock_paturage_tif_YEAR_2 = file.path(file_case_alpage_YEAR_2, paste0("paturage",YEAR_2,"_",alpage,".tif"))
+  # Un .TIF par alpage contenant la charge totale sur toute la saison
+  output_flock_tot_tif_YEAR_2 = file.path(file_case_alpage_YEAR_2, paste0("total_",YEAR_2,"_",alpage,".tif"))
+  
+  
+  
+  # SORTIE
+  
+  # Création du dossier de sortie des indicateur pour la visualistaion
+  output_Plot_Animation_case <- file.path(output_dir, "7. Plot_et_Animation")
+  if (!dir.exists(output_Plot_Animation_case)) {
+    dir.create(output_Plot_Animation_case, recursive = TRUE)
+  }
+  # Création du sous-dossier Indicateur traitée : Espace paturé
+  output_load_delta_case <- file.path(output_Plot_Animation_case, "DELTA_Chargement")
+  if (!dir.exists(output_load_delta_case)) {
+    dir.create(output_load_delta_case, recursive = TRUE)
+  }
+  
+  # Un .tif contenant le delta de chargement comportement 
+  output_delta_load_paturage = file.path(output_load_delta_case, paste0("delta_chargement_paturage", YEAR_2, "_" ,YEAR_1, "_", alpage, ".tif"))
+  output_delta_load_repos = file.path(output_load_delta_case, paste0("delta_chargement_repos", YEAR_2, "_" ,YEAR_1, "_", alpage, ".tif"))
+  output_delta_load_deplacement = file.path(output_load_delta_case, paste0("delta_chargement_deplacement", YEAR_2, "_" ,YEAR_1, "_", alpage, ".tif"))
+  # Un .tif contenant le delta de chargement total 
+  output_delta_load_total = file.path(output_load_delta_case, paste0("delta_chargement_total", YEAR_2, "_" ,YEAR_1, "_", alpage, ".tif"))
+  
+  #CODE 
+  
+  
+  
+  library(raster)
+  
+  # Lecture des rasters de l'année 1
+  repos_YEAR_1 <- raster(output_flock_repos_tif_YEAR_1)
+  deplacement_YEAR_1 <- raster(output_flock_deplacement_tif_YEAR_1)
+  paturage_YEAR_1 <- raster(output_flock_paturage_tif_YEAR_1)
+  total_YEAR_1 <- raster(output_flock_tot_tif_YEAR_1)
+  
+  # Lecture des rasters de l'année 2
+  repos_YEAR_2 <- raster(output_flock_repos_tif_YEAR_2)
+  deplacement_YEAR_2 <- raster(output_flock_deplacement_tif_YEAR_2)
+  paturage_YEAR_2 <- raster(output_flock_paturage_tif_YEAR_2)
+  total_YEAR_2 <- raster(output_flock_tot_tif_YEAR_2)
+  
+  # Aligner les rasters de l'année 2 sur la grille de l'année 1
+  repos_YEAR_2_aligned <- projectRaster(repos_YEAR_2, repos_YEAR_1, method = "bilinear")
+  deplacement_YEAR_2_aligned <- projectRaster(deplacement_YEAR_2, deplacement_YEAR_1, method = "bilinear")
+  paturage_YEAR_2_aligned <- projectRaster(paturage_YEAR_2, paturage_YEAR_1, method = "bilinear")
+  total_YEAR_2_aligned <- projectRaster(total_YEAR_2, total_YEAR_1, method = "bilinear")
+  
+  # Calcul du delta de chargement (année 2 - année 1)
+  delta_repos <- repos_YEAR_2_aligned - repos_YEAR_1
+  delta_deplacement <- deplacement_YEAR_2_aligned - deplacement_YEAR_1
+  delta_paturage <- paturage_YEAR_2_aligned - paturage_YEAR_1
+  delta_total <- total_YEAR_2_aligned - total_YEAR_1
+  
+  
+  ## Sauvegarde des résultats au format TIF
+  writeRaster(delta_repos, filename = output_delta_load_repos, format = "GTiff", overwrite = TRUE)
+  writeRaster(delta_deplacement, filename = output_delta_load_deplacement, format = "GTiff", overwrite = TRUE)
+  writeRaster(delta_paturage, filename = output_delta_load_paturage, format = "GTiff", overwrite = TRUE)
+  writeRaster(delta_total, filename = output_delta_load_total, format = "GTiff", overwrite = TRUE)
+  
+  
+}
 
 
 
