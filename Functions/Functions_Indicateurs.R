@@ -309,6 +309,79 @@ day_flock_load_tif_nostack <- function(daily_rds_file, output_case_alpage,
 
 
 
+quinzaine_flock_load_tif_nostack <- function(daily_rds_file, output_case_alpage,
+                                             UP_file, alpage, alpage_info_file,
+                                             YEAR, res_raster = 10, CROP = "NO") {
+  library(raster)
+  library(dplyr)
+  library(lubridate)
+  
+  # Charger toutes les données journalières
+  all_data <- readRDS(daily_rds_file)
+  
+  # Ajout d'une colonne date (en supposant que 'day' est le numéro du jour dans l'année)
+  all_data <- all_data %>%
+    mutate(date = as.Date(day - 1, origin = paste0(YEAR, "-01-01")))
+  
+  # Définir les intervalles pour les quinzaines (exemple pour juin à septembre)
+  date_breaks <- yday(as.POSIXct(
+    c(paste0("16/06/", YEAR),
+      paste0("01/07/", YEAR),
+      paste0("16/07/", YEAR),
+      paste0("01/08/", YEAR),
+      paste0("16/08/", YEAR),
+      paste0("01/09/", YEAR),
+      paste0("16/09/", YEAR)),
+    format = "%d/%m/%Y")
+  )
+  
+  # Étiquettes de quinzaine sans espaces (pour faciliter les noms de fichiers)
+  date_labs <- c("avant15_jun", "16_30_jun", "1_15_jul", "16_30_jul",
+                 "1_15_aou", "16_30_aou", "1_15_sep", "apres16_sep")
+  
+  # Attribution de la période à chaque observation
+  all_data <- all_data %>%
+    mutate(yday = yday(date)) %>%
+    mutate(month_period = factor(date_labs[findInterval(yday, date_breaks) + 1],
+                                 levels = date_labs))
+  
+  # Création du raster template basé sur l'étendue des données et la résolution souhaitée
+  xmin <- min(all_data$x)
+  xmax <- max(all_data$x)
+  ymin <- min(all_data$y)
+  ymax <- max(all_data$y)
+  r_template <- raster(extent(xmin, xmax, ymin, ymax), resolution = res_raster)
+  
+  # Boucle sur chaque quinzaine pour générer un raster de somme de Charge
+  quinzaine_periods <- unique(all_data$month_period)
+  for (p in quinzaine_periods) {
+    cat("Traitement de la periode :", p, "\n")
+    sub_data <- all_data %>% filter(month_period == p)
+    if(nrow(sub_data) < 5) next  # Ignorer si pas assez de points
+    
+    # Préparer les coordonnées et le champ "Charge" sous forme numérique
+    pts_coords <- as.matrix(sub_data[, c("x", "y")])
+    pts_field <- as.numeric(sub_data$Charge)
+    
+    # Rasteriser les points : calcul de la somme de "Charge" par cellule
+    charge_raster <- rasterize(pts_coords,
+                               r_template,
+                               field = pts_field,
+                               fun = function(x, ...) sum(x, na.rm = TRUE),
+                               background = NA)
+    
+    # Définir le nom du fichier de sortie pour cette quinzaine
+    output_file <- file.path(output_case_alpage,
+                             paste0("by_quinzaine_", YEAR, "_", alpage, "_", p, ".tif"))
+    
+    # Sauvegarder le raster en GeoTIFF
+    writeRaster(charge_raster, filename = output_file, format = "GTiff", overwrite = TRUE)
+    
+    rm(sub_data, charge_raster, pts_coords, pts_field)
+    gc() # Nettoyage mémoire
+  }
+}
+
 
 
 
@@ -702,6 +775,102 @@ generate_presence_polygons_by_percentage <- function(state_rds_file, output_poly
 
 
 
+generate_presence_polygons_by_percentage_per_month <- function(state_rds_file, output_polygon_use_shp, YEAR, alpage,
+                                                     percentage,
+                                                     n_grid,
+                                                     small_poly_threshold_percent,
+                                                     crs) {
+  # Chargement des librairies nécessaires
+  library(sf)
+  library(dplyr)
+  library(lubridate)
+  library(MASS)
+  
+  # Lecture des données et filtrage sur l'alpage et l'année
+  data <- readRDS(state_rds_file)
+  data <- data[data$alpage == alpage, ]
+  data <- data %>% filter(year(time) == YEAR)
+  
+  # Regroupement par mois : Juin, Juillet, Août, Septembre
+  # Si le mois est octobre (10), il sera regroupé avec septembre (9)
+  data <- data %>% 
+    mutate(month = month(time)) %>%
+    mutate(month = ifelse(month == 10, 9, month)) %>%
+    mutate(month_period = factor(case_when(
+      month == 6 ~ "Juin",
+      month == 7 ~ "Juillet",
+      month == 8 ~ "Aout",
+      month == 9 ~ "Septembre"
+    ), levels = c("Juin", "Juillet", "Aout", "Septembre")))
+  
+  # Initialisation de la liste pour stocker les polygones par période (mois)
+  liste_sf <- list()
+  
+  # Pour chaque période (mois)
+  for (p in unique(data$month_period)) {
+    sub_data <- data %>% filter(month_period == p)
+    if (nrow(sub_data) == 0) next
+    
+    # Calcul du KDE sur la grille
+    kd <- kde2d(x = sub_data$x, y = sub_data$y, n = n_grid)
+    
+    # Calcul du seuil pour couvrir "percentage" de la masse totale
+    zvals <- as.vector(kd$z)
+    zsum <- sum(zvals)
+    sorted_z <- sort(zvals, decreasing = TRUE)
+    cumsum_z <- cumsum(sorted_z)
+    idx <- which(cumsum_z >= percentage * zsum)[1]
+    density_threshold <- sorted_z[idx]
+    
+    # Extraction des contours correspondant à ce seuil
+    cl <- contourLines(kd$x, kd$y, kd$z, levels = density_threshold)
+    if (length(cl) == 0) next
+    
+    # Conversion des contours en polygones en fermant la boucle
+    polygons <- lapply(cl, function(cobj) {
+      coords <- cbind(cobj$x, cobj$y)
+      if (nrow(coords) < 3) return(NULL)
+      if (!all(coords[1, ] == coords[nrow(coords), ])) {
+        coords <- rbind(coords, coords[1, ])
+      }
+      poly <- st_polygon(list(coords))
+      if (st_area(poly) == 0) return(NULL)
+      poly
+    })
+    polygons <- Filter(Negate(is.null), polygons)
+    if (length(polygons) == 0) next
+    
+    # Création d'un objet sfc puis fusion des polygones
+    sfc_polygons <- st_sfc(polygons, crs = crs)
+    sfc_union <- st_union(sfc_polygons)
+    sfc_union_poly <- st_cast(sfc_union, "POLYGON")
+    
+    # Filtrage des petits polygones (exclure ceux dont l'aire est inférieure à un certain pourcentage du plus grand)
+    areas <- st_area(sfc_union_poly)
+    threshold_area <- small_poly_threshold_percent * max(areas)
+    sfc_union_filtered <- sfc_union_poly[areas >= threshold_area]
+    if (length(sfc_union_filtered) == 0) next
+    
+    # Fusion finale pour obtenir un seul objet (MultiPolygon) par période
+    sfc_final <- st_union(sfc_union_filtered)
+    sfc_final <- st_make_valid(sfc_final)  # Assurer la validité de la géométrie
+    
+    liste_sf[[as.character(p)]] <- st_sf(month_period = p, geometry = sfc_final)
+  }
+  
+  if (length(liste_sf) == 0) {
+    message("Aucun polygone généré.")
+    return(NULL)
+  }
+  
+  all_polygons_sf <- do.call(rbind, liste_sf)
+  
+  # Export vers le shapefile de sortie
+  st_write(all_polygons_sf, output_polygon_use_shp, delete_layer = TRUE)
+  message(paste("Polygones exportés vers", output_polygon_use_shp))
+  
+  return(all_polygons_sf)
+}
 
 
 

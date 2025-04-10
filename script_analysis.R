@@ -178,7 +178,7 @@ if (FALSE) {
   # Doit contenir les colonnes "alpage", "date_pose" et "date_retrait"
   AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
   check_and_correct_csv(AIF)
-  
+  AIF_data<-read.csv(AIF)
   
   ## SORTIE ##
   # Création du sous-dossier pour stocker les résultats du filtre de Bjorneraas

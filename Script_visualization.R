@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2024
+YEAR <- 2022
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
 alpage <- "Cayolle"
-alpages <- c("Cayolle","Sanguiniere")
+alpages <- "Viso"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -138,13 +138,13 @@ if (FALSE) {
   # CODE
 
   #Indicateur : Charge total .TIF
-  if (TRUE) {
+  if (FALSE) {
   total_flock_load_tif(total_rds_prefix, output_flock_tot_tif, output_flock_tot_tif_crop, UP_file, alpage, alpage_info_file)
     }
   
   
   #Indicateur : Charge_by_state
-  if (TRUE) {
+  if (FALSE) {
   state_flock_load_tif(state_rds_prefix,output_flock_repos_tif,output_flock_deplacement_tif, output_flock_paturage_tif,
                        output_flock_repos_tif_crop, output_flock_deplacement_tif_crop , output_flock_paturage_tif_crop,
                        UP_file, alpage, alpage_info_file)
@@ -156,14 +156,23 @@ if (FALSE) {
     day_flock_load_tif_nostack(daily_rds_prefix, output_case_alpage, UP_file, alpage, alpage_info_file, YEAR, res_raster, CROP = "YES")
     
     
-    }
+  }
   
-  
-  
+  if (TRUE){
+  # Par quinzaine
+  quinzaine_flock_load_tif_nostack(daily_rds_file = daily_rds_file,
+                                   output_case_alpage = output_case_alpage,
+                                   UP_file = UP_file,
+                                   alpage = alpage,
+                                   alpage_info_file = alpage_info_file,
+                                   YEAR = YEAR,
+                                   res_raster = 10,
+                                   CROP = "NO")
+  }
   
   }
   
-}
+ }
 
 #### 2. Calcul de la distance et du denivelé ####
 #-----------------------------------------------#
@@ -462,9 +471,9 @@ if (FALSE){
   }
     
     
-    
-    
-    
+  if (TRUE){
+    generate_presence_polygons_by_percentage_per_month(state_rds_file, output_polygon_use_shp, YEAR, alpage, percentage = 0.85 ,n_grid = 200,small_poly_threshold_percent = 0.05 ,crs = 2154 )  
+  } 
     
     
   
@@ -950,11 +959,157 @@ if (FALSE){
   writeRaster(delta_total, filename = output_delta_load_total, format = "GTiff", overwrite = TRUE)
   
   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+ 
 }
 
 
 
+#### 10. Delta de chargement ####
+#-------------------------------#
+if (FALSE){
 
+  
+  
+  
+  
+  
+  # Un raster de phénologie
+  pheno_raster = file.path(raster_dir,"ndvis_2024_Cayolle_pheno_metrics.tif")
+  ndvi_stack <- stack(pheno_raster)
+  ndvi   <- raster(pheno_raster)
 
-
-
+  
+  
+  print(paste("Nombre de bandes :", nlayers(ndvi_stack)))
+  
+  
+  
+  
+  
+  
+  # Définition du répertoire et des chemins d'entrée / sortie
+  raster_dir <- "C:/Users/masso/Documents/STAGE_M2_PERSEE/R_studio/PERSEE_Traitement_Catlog/raster"
+  input_file <- file.path(raster_dir, "ndvis_2024_Cayolle_pheno_metrics.tif")
+  output_file <- file.path(raster_dir, "ndvis_2024_Cayolle_band_max.tif")
+  
+  # Charger le raster multi-bandes (13 bandes)
+  ndvi_stack <- stack(input_file)
+  cat("Nombre de bandes dans le raster :", nlayers(ndvi_stack), "\n")
+  
+  # Fonction qui retourne, pour un pixel donné, l'indice (la bande) où NDVI est maximum
+  get_band_max <- function(pixel_values) {
+    # Si toutes les valeurs du pixel sont NA, retourner NA
+    if(all(is.na(pixel_values))) return(NA)
+    # Calculer l'indice de la bande où la valeur NDVI est maximale
+    band_index <- which.max(pixel_values)
+    return(band_index)
+  }
+  
+  # Appliquer la fonction sur chaque pixel du stack
+  band_max_raster <- calc(ndvi_stack, fun = get_band_max)
+  
+  # Exporter le résultat dans un fichier GeoTIFF
+  writeRaster(band_max_raster, filename = output_file, format = "GTiff", overwrite = TRUE)
+  cat("Raster de la bande de NDVI max exporté sous :", output_file, "\n")
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  library(raster)
+  
+  # Définition du répertoire et des chemins d'entrée/sortie
+  raster_dir <- "C:/Users/masso/Documents/STAGE_M2_PERSEE/R_studio/PERSEE_Traitement_Catlog/raster"
+  input_file <- file.path(raster_dir, "ndvis_2024_Cayolle_pheno_metrics.tif")
+  output_file <- file.path(raster_dir, "ndvis_2024_Cayolle_ndvi_max.tif")
+  
+  # Charger le raster multi-bandes (ici 13 bandes)
+  ndvi_stack <- stack(input_file)
+  cat("Nombre de bandes dans le raster :", nlayers(ndvi_stack), "\n")
+  
+  # Calculer, pour chaque pixel, la valeur NDVI maximale en prenant le maximum de la série
+  ndvi_max_raster <- calc(ndvi_stack, fun = function(x) { max(x, na.rm = TRUE) })
+  
+  # Sauvegarder le raster de NDVI maximum
+  writeRaster(ndvi_max_raster, filename = output_file, format = "GTiff", overwrite = TRUE)
+  cat("Raster de NDVI max exporté sous :", output_file, "\n")
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  # Chargement de la bibliothèque nécessaire
+  library(raster)
+  
+  # Définition du répertoire contenant vos rasters
+  raster_dir <- "C:/Users/masso/Documents/STAGE_M2_PERSEE/R_studio/PERSEE_Traitement_Catlog/raster"
+  
+  # Chemin du stack NDVI complet (une bande par date)
+  ndvi_stack_file <-  file.path(raster_dir,"ndvis_2024_Cayolle_pheno_metrics.tif")
+  
+  # Chemin de sortie pour le raster des métriques phénologiques (date du NDVI max)
+  pheno_raster <- file.path(raster_dir, "ndvis_2024_Cayolle_pheno_metrics.tif")
+  
+  # Importation du stack NDVI
+  ndvi_stack <- stack(ndvi_stack_file)
+  
+  # --- Extraction des dates des acquisitions ---
+  # On suppose que les noms de couches contiennent la date au format "YYYYMMDD".
+  dates <- as.Date(names(ndvi_stack), format = "%Y%m%d")
+  if (all(is.na(dates))) {
+    # Si l'extraction échoue, on attribue simplement des jours séquentiels
+    julian_days <- 1:nlayers(ndvi_stack)
+  } else {
+    # Conversion des dates en jour julien (valeurs de 1 à 366)
+    julian_days <- as.numeric(format(dates, "%j"))
+  }
+  
+  # --- Fonction pour extraire la date du NDVI max pour chaque pixel ---
+  get_max_date <- function(x) {
+    # x est un vecteur de valeurs NDVI pour un pixel donné sur toute l'année
+    if (all(is.na(x))) return(NA)  # Si toutes les valeurs sont manquantes, retourner NA
+    
+    # Trouver l'indice correspondant à la valeur maximum
+    max_index <- which.max(x)
+    
+    # Retourner le jour julien associé à cet indice
+    return(julian_days[max_index])
+  }
+  
+  # Appliquer la fonction sur l'ensemble du stack NDVI (pixel par pixel)
+  date_raster <- calc(ndvi_stack, fun = get_max_date)
+  
+  # Exporter le raster résultant des dates de NDVI max au format GeoTIFF
+  writeRaster(date_raster, filename = pheno_raster, format = "GTiff", overwrite = TRUE)
+  
+  cat("Raster de la date du NDVI max exporté sous :", pheno_raster, "\n")
+  
