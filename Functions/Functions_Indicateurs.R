@@ -411,7 +411,7 @@ save_distance_denivele <- function(state_rds_file, distance_csv_file , altitude_
   altitude <- get_raster_cropped_L93(altitude_raster, get_minmax_L93(data, 20), reproject = FALSE, as = "spatRast")
   
   # Préparer les données pour obtenir les longueurs de pas
-  data <- prepData(data, type = "UTM", covNames = NULL)
+  data <- prepData(data, type = "UTM")
   
   # Extraire l'altitude
   data$altitude <- terra::extract(altitude, vect(as.matrix(data[c("x", "y")]), type="points", crs=CRS_L93), ID = FALSE)$BDALTI

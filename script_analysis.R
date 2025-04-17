@@ -8,10 +8,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2021
-TYPE <- "ofb" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Sept-Laux"
-alpages <- "Sept-Laux"
+YEAR <- 2024
+TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
+alpage <- "Viso"
+alpages <- "Viso"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -62,7 +62,7 @@ if (FALSE){
 
 #### 1. Simplification en GPKG ####
 #----------------------------------#
-if (FALSE) {  # Mettre TRUE pour exécuter
+if (T) {  # Mettre TRUE pour exécuter
   library(terra)
   source(file.path(functions_dir, "Functions_filtering.R"))
   

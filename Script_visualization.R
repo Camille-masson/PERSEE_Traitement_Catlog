@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
+YEAR <- 2024
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Cayolle"
-alpages <- "Viso"
+alpage <- "Viso"
+alpages <- c("Sanguiniere","Cayolle")
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -100,8 +100,7 @@ if (FALSE) {
   raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
   # Un data.frame contenant les dates de pose et de retrait des colliers
   alpage_info_file <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
-  
-  
+  )
   # SORTIE 
   
   #Création du dossier de sortie des indicateur pour la visualistaion
@@ -138,13 +137,13 @@ if (FALSE) {
   # CODE
 
   #Indicateur : Charge total .TIF
-  if (FALSE) {
+  if (TRUE) {
   total_flock_load_tif(total_rds_prefix, output_flock_tot_tif, output_flock_tot_tif_crop, UP_file, alpage, alpage_info_file)
     }
   
   
   #Indicateur : Charge_by_state
-  if (FALSE) {
+  if (TRUE) {
   state_flock_load_tif(state_rds_prefix,output_flock_repos_tif,output_flock_deplacement_tif, output_flock_paturage_tif,
                        output_flock_repos_tif_crop, output_flock_deplacement_tif_crop , output_flock_paturage_tif_crop,
                        UP_file, alpage, alpage_info_file)
@@ -402,7 +401,7 @@ if (FALSE){
   }
   
   if (TYPE == "catlog"){
-  generate_trajectory_gpkg_catlog(state_rds_file,output_state_traj_case,YEAR,alpage,sampling_interval = 20)#Point toute les 30 minutes (reglé de base a 10)
+  generate_trajectory_gpkg_catlog(state_rds_file,output_state_traj_case,YEAR,alpage,sampling_interval = 10)#Point toute les 30 minutes (reglé de base a 10)
   }
   
   }
@@ -471,7 +470,7 @@ if (FALSE){
   }
     
     
-  if (TRUE){
+  if (FALSE){
     generate_presence_polygons_by_percentage_per_month(state_rds_file, output_polygon_use_shp, YEAR, alpage, percentage = 0.85 ,n_grid = 200,small_poly_threshold_percent = 0.05 ,crs = 2154 )  
   } 
     

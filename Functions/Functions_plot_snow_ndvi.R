@@ -1,5 +1,145 @@
 
 
+### 1) Fonction pour tracer le violin plot pour un seul alpage en utilisant "altitude"
+plot_fsca_alti_violin_one <- function(alpage,
+                                      data_rds,
+                                      years_to_use = c(2022, 2023, 2024)) {
+  # Charger les données et supprimer la colonne 'period' si elle existe
+  data <- readRDS(data_rds)
+  data_mod <- data %>% select(-any_of("period"))
+  
+  # Transformation en format long : rassembler les colonnes "presence" et "load"
+  data_long <- data_mod %>% 
+    pivot_longer(
+      cols = matches("^(presence|load)_"),
+      names_to = c("var", "year", "period"),
+      names_pattern = "(presence|load)_(\\d{4})_(.*)",
+      values_to = "value"
+    ) %>%
+    # Reconstituer une table avec deux colonnes (presence et load)
+    pivot_wider(
+      names_from = var,
+      values_from = value
+    ) %>%
+    # Filtrer pour ne garder que les pixels utilisés, dont le load est <= 700 et appartenant aux années souhaitées
+    filter(presence == 1,
+           load <= 700,
+           as.integer(year) %in% years_to_use) %>%
+    # Exclure explicitement les données correspondant à "apres16_sep"
+    filter(period != "apres16_sep") %>%
+    # Recoder la variable 'period' pour obtenir des libellés explicites
+    mutate(period = recode(period,
+                           "16_30_jun" = "16-30 Juin",
+                           "1_15_jul"  = "1-15 Juillet",
+                           "16_30_jul" = "16-30 Juillet",
+                           "1_15_aou"  = "1-15 Août",
+                           "16_30_aou" = "16-30 Août",
+                           "1_15_sep"  = "1-15 Septembre"))
+  
+  # Forcer l'ordre souhaité pour les périodes sur l'axe x
+  period_levels <- c("16-30 Juin", "1-15 Juillet", "16-30 Juillet", 
+                     "1-15 Août", "16-30 Août", "1-15 Septembre")
+  data_long$period <- factor(data_long$period, levels = period_levels)
+  
+  # Création du violin plot avec superposition d'un boxplot
+  # Modification : utilisation de "altitude" au lieu de "FSCA" et suppression de scale_y_reverse()
+  p <- ggplot(data_long, aes(x = period, y = altitude, fill = factor(year), weight = load)) +
+    geom_violin(
+      position = position_dodge(width = 0.8),
+      scale = "width",      # Normalise la largeur entre groupes
+      trim = TRUE,          # Tronque aux min/max observés
+      alpha = 0.6,          # Transparence pour mieux voir le chevauchement
+      color = "black"       # Contour noir pour chaque violon
+    ) +
+    geom_boxplot(
+      position = position_dodge(width = 0.8),
+      width = 0.1,
+      outlier.shape = NA,
+      alpha = 0.3,
+      show.legend = FALSE
+    ) +
+    labs(
+      title = alpage,      # Le titre est le nom de l'alpage
+      x = "Période (Quinzaine)",
+      y = "Altitude",      # Label de l'axe y modifié
+      fill = "Année"
+    ) +
+    # Palette personnalisée
+    scale_fill_manual(values = c("#1b9e77", "#d95f02", "#7570b3")) +
+    theme_minimal(base_size = 13) +
+    theme(
+      axis.text.x = element_text(size = 12),
+      axis.text.y = element_text(size = 12),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+  
+  return(p)
+}
+
+### 2) Fonction pour empiler plusieurs alpages (en colonne) et sauvegarder au format A4 portrait
+plot_violin_alti <- function(alpages,
+                             data_dir,
+                             output_dir,
+                             years_to_use = c(2022, 2023, 2024),
+                             file_prefix  = "Plot_alti_violin",
+                             dpi          = 300) {
+  plots <- list()
+  
+  for (i in seq_along(alpages)) {
+    alpage <- alpages[i]
+    # On conserve le même format de nommage pour le fichier de données
+    data_rds <- file.path(data_dir, paste0("Use_Fsca_Alti_", alpage, "_by_raster.rds"))
+    
+    # Générer le plot pour cet alpage en utilisant la fonction modifiée
+    p_alpage <- plot_fsca_alti_violin_one(alpage, data_rds, years_to_use)
+    
+    # Masquer la légende pour tous sauf le dernier afin d'obtenir une légende commune
+    if (i < length(alpages)) {
+      p_alpage <- p_alpage + theme(legend.position = "none")
+    }
+    plots[[alpage]] <- p_alpage
+  }
+  
+  # Combiner les graphiques en une seule colonne et collecter une légende commune
+  combined_plot <- wrap_plots(plots, ncol = 1) +
+    plot_layout(guides = "collect") &
+    theme(legend.position = "bottom")
+  
+  # Titre global indiquant les alpages et les années traitées
+  combined_plot <- combined_plot + plot_annotation(
+    title = paste0(
+      "Alpages: ", paste(alpages, collapse = ", "),
+      " | Années: ", paste(years_to_use, collapse = ", ")
+    ),
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+  
+  # Nom du fichier de sortie
+  plot_filename <- paste0(
+    file_prefix, "_",
+    paste(alpages, collapse = "_"),
+    "_Years_", paste(years_to_use, collapse = "_"),
+    ".jpg"
+  )
+  output_file <- file.path(output_dir, plot_filename)
+  
+  # Sauvegarder en format JPG (A4 portrait)
+  ggsave(
+    filename = output_file,
+    plot     = combined_plot,
+    device   = "jpg",
+    width    = 8.27,
+    height   = 11.69,
+    units    = "in",
+    dpi      = dpi
+  )
+  
+  message("Plot saved to: ", output_file)
+  return(combined_plot)
+}
+
+
 ### Fonction pour calculer le centroïde d'un polygone fermé (optionnel)
 polygon_centroid <- function(x, y) {
   n <- length(x) - 1  # n segments
@@ -361,7 +501,12 @@ plot_fsca_alti_violin_one <- function(alpage,
                                       years_to_use = c(2022, 2023, 2024)) {
   # Charger les données et supprimer la colonne 'period' si elle existe
   data <- readRDS(data_rds)
-  data_mod <- data %>% select(-any_of("period"))
+  if ("period" %in% colnames(data)) {
+    data_mod <- data %>% select(-period)
+  } else {
+    data_mod <- data
+  }
+ 
   
   # Transformation en format long : rassembler les colonnes "presence" et "load"
   data_long <- data_mod %>% 
@@ -498,143 +643,3 @@ plot_violin_fsca <- function(alpages,
 
 
 
-
-
-### 1) Fonction pour tracer le violin plot pour un seul alpage en utilisant "altitude"
-plot_fsca_alti_violin_one <- function(alpage,
-                                      data_rds,
-                                      years_to_use = c(2022, 2023, 2024)) {
-  # Charger les données et supprimer la colonne 'period' si elle existe
-  data <- readRDS(data_rds)
-  data_mod <- data %>% select(-any_of("period"))
-  
-  # Transformation en format long : rassembler les colonnes "presence" et "load"
-  data_long <- data_mod %>% 
-    pivot_longer(
-      cols = matches("^(presence|load)_"),
-      names_to = c("var", "year", "period"),
-      names_pattern = "(presence|load)_(\\d{4})_(.*)",
-      values_to = "value"
-    ) %>%
-    # Reconstituer une table avec deux colonnes (presence et load)
-    pivot_wider(
-      names_from = var,
-      values_from = value
-    ) %>%
-    # Filtrer pour ne garder que les pixels utilisés, dont le load est <= 700 et appartenant aux années souhaitées
-    filter(presence == 1,
-           load <= 700,
-           as.integer(year) %in% years_to_use) %>%
-    # Exclure explicitement les données correspondant à "apres16_sep"
-    filter(period != "apres16_sep") %>%
-    # Recoder la variable 'period' pour obtenir des libellés explicites
-    mutate(period = recode(period,
-                           "16_30_jun" = "16-30 Juin",
-                           "1_15_jul"  = "1-15 Juillet",
-                           "16_30_jul" = "16-30 Juillet",
-                           "1_15_aou"  = "1-15 Août",
-                           "16_30_aou" = "16-30 Août",
-                           "1_15_sep"  = "1-15 Septembre"))
-  
-  # Forcer l'ordre souhaité pour les périodes sur l'axe x
-  period_levels <- c("16-30 Juin", "1-15 Juillet", "16-30 Juillet", 
-                     "1-15 Août", "16-30 Août", "1-15 Septembre")
-  data_long$period <- factor(data_long$period, levels = period_levels)
-  
-  # Création du violin plot avec superposition d'un boxplot
-  # Modification : utilisation de "altitude" au lieu de "FSCA" et suppression de scale_y_reverse()
-  p <- ggplot(data_long, aes(x = period, y = altitude, fill = factor(year), weight = load)) +
-    geom_violin(
-      position = position_dodge(width = 0.8),
-      scale = "width",      # Normalise la largeur entre groupes
-      trim = TRUE,          # Tronque aux min/max observés
-      alpha = 0.6,          # Transparence pour mieux voir le chevauchement
-      color = "black"       # Contour noir pour chaque violon
-    ) +
-    geom_boxplot(
-      position = position_dodge(width = 0.8),
-      width = 0.1,
-      outlier.shape = NA,
-      alpha = 0.3,
-      show.legend = FALSE
-    ) +
-    labs(
-      title = alpage,      # Le titre est le nom de l'alpage
-      x = "Période (Quinzaine)",
-      y = "Altitude",      # Label de l'axe y modifié
-      fill = "Année"
-    ) +
-    # Palette personnalisée
-    scale_fill_manual(values = c("#1b9e77", "#d95f02", "#7570b3")) +
-    theme_minimal(base_size = 13) +
-    theme(
-      axis.text.x = element_text(size = 12),
-      axis.text.y = element_text(size = 12),
-      panel.grid.minor = element_blank(),
-      panel.grid.major.x = element_blank()
-    )
-  
-  return(p)
-}
-
-### 2) Fonction pour empiler plusieurs alpages (en colonne) et sauvegarder au format A4 portrait
-plot_violin_alti <- function(alpages,
-                                              data_dir,
-                                              output_dir,
-                                              years_to_use = c(2022, 2023, 2024),
-                                              file_prefix  = "Plot_alti_violin",
-                                              dpi          = 300) {
-  plots <- list()
-  
-  for (i in seq_along(alpages)) {
-    alpage <- alpages[i]
-    # On conserve le même format de nommage pour le fichier de données
-    data_rds <- file.path(data_dir, paste0("Use_Fsca_Alti_", alpage, "_by_raster.rds"))
-    
-    # Générer le plot pour cet alpage en utilisant la fonction modifiée
-    p_alpage <- plot_fsca_alti_violin_one(alpage, data_rds, years_to_use)
-    
-    # Masquer la légende pour tous sauf le dernier afin d'obtenir une légende commune
-    if (i < length(alpages)) {
-      p_alpage <- p_alpage + theme(legend.position = "none")
-    }
-    plots[[alpage]] <- p_alpage
-  }
-  
-  # Combiner les graphiques en une seule colonne et collecter une légende commune
-  combined_plot <- wrap_plots(plots, ncol = 1) +
-    plot_layout(guides = "collect") &
-    theme(legend.position = "bottom")
-  
-  # Titre global indiquant les alpages et les années traitées
-  combined_plot <- combined_plot + plot_annotation(
-    title = paste0(
-      "Alpages: ", paste(alpages, collapse = ", "),
-      " | Années: ", paste(years_to_use, collapse = ", ")
-    ),
-    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
-  )
-  
-  # Nom du fichier de sortie
-  plot_filename <- paste0(
-    file_prefix, "_",
-    paste(alpages, collapse = "_"),
-    "_Years_", paste(years_to_use, collapse = "_"),
-    ".jpg"
-  )
-  output_file <- file.path(output_dir, plot_filename)
-  
-  # Sauvegarder en format JPG (A4 portrait)
-  ggsave(
-    filename = output_file,
-    plot     = combined_plot,
-    device   = "jpg",
-    width    = 8.27,
-    height   = 11.69,
-    units    = "in",
-    dpi      = dpi
-  )
-  
-  message("Plot saved to: ", output_file)
-  return(combined_plot)
-}
