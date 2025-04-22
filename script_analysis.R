@@ -7,9 +7,9 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 9999 
-alpage = "Alpage_demo"
-alpages = "Alpage_demo"
+YEAR = 2022
+alpage = "Cayolle"
+alpages = "Cayolle"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -375,6 +375,114 @@ if (TRUE) {
   viterbi_trajectory_to_rds(data_hmm, output_rds_file, individual_info_file)
 }
 
+#### 3.1 HMM with night park #### 
+#-------------------------------#
+
+if (FALSE) {
+  library(dplyr)
+  library(lubridate)
+  library(dbscan)
+  source(file.path(functions_dir, "Functions_HMM_fitting.R"))
+  
+  
+  
+  for (alpage in alpages){
+  # ENTREE
+  # Dossier contenant les fichiers du comportement
+  case_state_file = file.path(output_dir, "3. HMM_comportement")
+  # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
+  state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
+  
+  
+  # SORTIE
+  # Un .RDS des données 
+  output_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+  
+  
+  # CODE 
+  
+  traj_by_night_park(state_rds_file, output_parc_rds_file, 
+                     window_minutes = 45, eps_dist = 500, min_days = 5)
+  
+  
+  }
+  
+  
+  
+}
+  
+  
+  
+  
+  
+  
+  
+  
+  
+# A mettre dans visu !
+  
+if(TRUE){
+  
+  
+  
+  
+  
+  
+  # 1. Charger les packages
+  library(dplyr)
+  library(sf)
+  
+
+  
+  
+  for (alpage in alpages){
+  # ENTREE
+  # Dossier contenant les fichiers du comportement
+  case_state_file = file.path(output_dir, "3. HMM_comportement")
+  # Un .RDS des données 
+  input_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+  
+  # SORTIE
+  output_gpkg_file <- file.path(case_state_file, paste0("Trajectoire_by_night_parc",YEAR,"_",alpage, ".gpkg"))
+
+
+  # 2. Convertir votre table data_with_parc en sf (points)
+  #    en donnant le système de coordonnées (Lambert‑93 = EPSG:2154)
+  data_sf <- readRDS(input_parc_rds_file) %>%
+    sf::st_as_sf(coords = c("x", "y"), crs = 2154)
+  
+  # 3. Construire une LINESTRING par ID/date/parc
+  traj_sf <- data_sf %>%
+    arrange(time) %>%                       # s’assurer de l’ordre chronologique
+    group_by(ID, date, parc) %>%            # un groupe = une trajectoire dans un parc
+    summarise(
+      geometry = st_combine(geometry),      # combiner tous les points
+      .groups = "drop"
+    ) %>%
+    st_cast("LINESTRING")                   # convertir en ligne
+  
+  
+  # (Optionnel) export des points pour vérification
+  sf::st_write(
+    data_sf,
+    output_gpkg_file,
+    layer = "points",
+    driver = "GPKG",
+    delete_layer = FALSE
+  )
+  
+}
+}
+
+
+
+
+
+
+
+
+
+
 #### 4. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
 #-------------------------------------------------------------#
 if (TRUE){
@@ -503,6 +611,209 @@ if (TRUE){
     rm(charge_tot)
     
     rm(charge)
+    
+    
+    if (TRUE){
+      
+      library(dplyr)
+      library(lubridate)
+      library(dbscan)
+      source(file.path(functions_dir, "Functions_HMM_fitting.R"))
+      
+      
+      
+      for (alpage in alpages){
+        # ENTREE
+        # Dossier contenant les fichiers du comportement
+        case_state_file = file.path(output_dir, "3. HMM_comportement")
+        # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
+        state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
+        
+        
+        # SORTIE
+        # Un .RDS des données 
+        output_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+        
+        
+        # CODE 
+        
+        traj_by_night_park(state_rds_file, output_parc_rds_file, 
+                           window_minutes = 45, eps_dist = 500, min_days = 5)
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        # ENTREE
+        # Dossier
+        case = file.path(output_dir, "4. Chargements_calcules")
+        load_case = file.path(case, paste0(YEAR, "_", alpage))
+        # Un .RDS par alpage contenant les charges journalières par comportement
+        input_load_day_state_rds = file.path(load_case, paste0("by_day_and_state_", YEAR, "_",alpage,".rds"))
+        
+        # Dossier contenant les fichiers du comportement
+        case_state_file = file.path(output_dir, "3. HMM_comportement")
+        input_parc_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+        
+        
+        # SORTIE
+        # SORTIE
+        output_park_day_state_rds <- file.path(
+          load_case,
+          paste0("by_park_day_and_state_", YEAR, "_", alpage, ".rds")
+        )
+        output_park_state_rds     <- file.path(
+          load_case,
+          paste0("by_park_and_state_", YEAR, "_", alpage, ".rds")
+        )
+        output_park_rds           <- file.path(
+          load_case,
+          paste0("by_park_", YEAR, "_", alpage, ".rds")
+        )
+        
+        
+        
+        
+        # CODE A METTRE EN FONCTION 
+        
+        library(dplyr)
+        library(lubridate)
+        
+       
+        # ————————————————————————————————
+        # 1) Chargement des données
+        charge_day_state <- readRDS(input_load_day_state_rds)
+        viterbi_parc     <- readRDS(input_parc_rds_file)
+        
+        # ————————————————————————————————
+        # 2) Calcul du jour julien (DOY) dans viterbi_parc
+        viterbi_parc <- viterbi_parc %>%
+          mutate(
+            date = as.Date(date),
+            day  = yday(date)
+          )
+        
+        # 3) Parc « majoritaire » par jour
+        day_park <- viterbi_parc %>%
+          count(day, parc) %>%
+          group_by(day) %>%
+          slice_max(n, with_ties = FALSE) %>%
+          dplyr::select(day, parc)
+        
+        # ————————————————————————————————
+        # 4) On ajoute la colonne parc à chaque ligne spatiale
+        charge_with_park <- charge_day_state %>%
+          left_join(day_park, by = "day")
+        
+        # ————————————————————————————————
+        # 5) Les 3 niveaux d’agrégation
+        
+        # 5a) PAR PIXEL (x,y) + JOUR + ÉTAT + PARC
+        charge_park_day_state <- charge_with_park %>%
+          group_by(x, y, day, state, parc) %>%
+          summarise(
+            Charge = sum(Charge, na.rm = TRUE),
+            .groups = "drop"
+          )
+        
+        # 5b) PAR PARC + ÉTAT (toutes nuits confondues)
+        charge_park_state <- charge_park_day_state %>%
+          group_by(x, y, parc, state) %>%
+          summarise(
+            Charge = sum(Charge, na.rm = TRUE),
+            .groups = "drop"
+          )
+        
+        # 5c) PAR PARC (tous états et toutes nuits confondus)
+        charge_park <- charge_park_state %>%
+          group_by(x,y,parc) %>%
+          summarise(
+            Charge = sum(Charge, na.rm = TRUE),
+            .groups = "drop"
+          )
+        
+        # ————————————————————————————————
+        # 6) Sauvegardes
+        saveRDS(charge_park_day_state, output_park_day_state_rds)
+        saveRDS(charge_park_state,     output_park_state_rds)
+        saveRDS(charge_park,           output_park_rds)
+        
+        # ————————————————————————————————
+        # 7) Nettoyage
+        rm(
+          charge_day_state,
+          viterbi_parc,
+          day_park,
+          charge_with_park,
+          charge_park_day_state,
+          charge_park_state,
+          charge_park
+        )
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+      }
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+    # By state and park 
+    
+    
+    # Un .RDS des données 
+    input_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+    
+    
+    
+    
+    
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
   }
   
   
@@ -511,3 +822,141 @@ if (TRUE){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### 4.1 FLOCK STOCKING RATE (charge) BY PARC AND BY STATE ####
+#-------------------------------------------------------------#
+if (TRUE){
+  
+  ## DESCRIPTION ##
+  # Calcul du taux de chargement selon la méthode "BBMM"
+  
+  # Nécessite :
+  # - .csv : "AAAA_infos_alpages.csv"
+  # - fichier .rds contenant les données par comportement : "Catlog_AAAA_alpage_demo_viterbi.rds"
+  
+  # En sortie :
+  # - Un fichier .rds avec le chargement par jour et par comportement :
+  #   outputs/4. Chargements_calcules/by_day_and_state_AAAA_alpage_demo
+  # - Un fichier .rds avec le chargement par jour :
+  #   outputs/4. Chargements_calcules/by_day_AAAA_alpage_demo
+  # - Un fichier .rds avec le chargement par comportement :
+  #   outputs/4. Chargements_calcules/by_state_AAAA_alpage_demo
+  # - Un fichier .rds avec le chargement total :
+  #   outputs/4. Chargements_calcules/total_AAAA_alpage_demo
+  
+  
+  ## LIBRARY ##
+  library(adehabitatHR)
+  library(data.table)
+  library(snow)
+  source(file.path(functions_dir, "Functions_map_plot.R"))
+  source(file.path(functions_dir, "Functions_flock_density.R"))
+  
+  ## ENTREES ##
+  # Un .RDS contenant les trajectoires catégorisées par comportement
+  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
+  
+  input_parc_rds_file <- file.path(output_dir, "3. HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds"))
+  
+  # Un .csv  "infos_alpages" remplis selon le model du jeu démo
+  AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
+  check_and_correct_csv(csv_path = AIF)
+  
+  # Un data.frame contenant les tailles de troupeaux et les évolutions des tailles en fonction de la date
+  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
+  flock_size_file <- file.path(raw_data_dir, paste0(YEAR, "_tailles_troupeaux.csv"))
+  check_and_correct_csv(csv_path = flock_size_file)
+  #str(read.csv(flock_size_file, stringsAsFactors = FALSE, encoding = "UTF-8"))
+  
+  
+  ## SORTIES ##
+  # Dossier de sortie
+  save_dir <- file.path(output_dir, "4. Chargements_calcules")
+  alpage_case <- file.path(save_dir, paste0 (YEAR,"_",alpage))
+  
+  # Un .RDS par alpage contenant les charges journalières par comportement
+  state_daily_rds_prefix <- paste0("by_day_and_state_", YEAR, "_")
+  # Un .RDS par alpage contenant les charges journalières
+  daily_rds_prefix <- paste0("by_day_", YEAR, "_")
+  # Un .RDS par alpage contenant les charges par comportement
+  state_rds_prefix <- paste0("by_state_", YEAR, "_")
+  # Un .RDS par alpage contenant la charge totale sur toute la saison
+  total_rds_prefix <- paste0("total_", YEAR, "_")
+  
+  state_parc_prefix   <- paste0("by_parc_and_state_", YEAR, "_")
+
+  
+  
+  
+  # 1) Charger les données 
+  data_parc <- readRDS(input_parc_rds_file)
+  flock_size_fixed <- get_flock_size_through_time(alpage, flock_size_file)
+  prop_time_collar_on <- get_alpage_info(alpage, AIF, "proportion_jour_allume")
+  
+  
+  # 3) Appel de la fonction
+  all_parc_files <- flock_load_by_parc_and_state_to_rds_kernelbb_Auto_grid(
+    data                  = data_parc,
+    save_dir              = alpage_case,
+    save_rds_prefix       = paste0("by_parc_and_state_", YEAR, "_"),
+    flock_size            = flock_size_fixed,
+    prop_time_collar_on   = prop_time_collar_on
+  )
+  
+   
+  # le préfixe que vous avez donné à flock_load_by_parc_and_state…
+  state_parc_prefix <- paste0("by_parc_and_state_", YEAR, "_")
+  
+  # fusion des fichiers .rds ENFIN sur LE BON DOSSIER
+  merged_parc_file <- flock_merge_rds_files(
+    save_dir = alpage_case,      # <– ici le dossier
+    state_daily_rds_prefix = state_parc_prefix
+  )
+  
+  # puis vous pouvez relire :
+  data_bis <- readRDS(merged_parc_file)
+ data_bis <- readRDS( merged_parc_file)
+ 
+ 
+}
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  

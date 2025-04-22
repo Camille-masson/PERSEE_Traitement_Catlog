@@ -479,3 +479,122 @@ flock_load_by_day_and_state_to_rds_kernelbb_Auto_grid <- function(data, save_dir
   return(all_files)
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+flock_load_by_parc_and_state_to_rds_kernelbb_Auto_grid <- function(data,
+                                                                   save_dir,
+                                                                   save_rds_prefix,
+                                                                   flock_size,
+                                                                   prop_time_collar_on) {
+  # → data : soit un data.frame, soit un chemin (character) vers un .RDS
+  # → flock_size : un unique nombre (taille du troupeau à répartir)
+  # NB : on suppose que vous avez déjà ajouté la colonne `parc` avec la méthode DBSCAN
+  
+  library(lubridate)
+  library(dplyr)
+  library(adehabitatHR)
+  library(raster)
+  
+  # 0. si data est un chemin, on lit ; sinon on le laisse tel quel
+  if (is.character(data) && length(data) == 1 && file.exists(data)) {
+    data <- readRDS(data)
+  } else if (!is.data.frame(data)) {
+    stop("`data` doit être soit un chemin vers un .RDS soit un data.frame.")
+  }
+  
+  # 1. check de la colonne parc
+  if (!"parc" %in% colnames(data)) {
+    stop("La colonne 'parc' est introuvable dans vos données.")
+  }
+  
+  # 2. création de la grille 10 m × 10 m (Lambert‑93)
+  if (!inherits(grid, "SpatialPixelsDataFrame")) {
+    buffer <- 100
+    x0 <- min(data$x) - buffer; x1 <- max(data$x) + buffer
+    y0 <- min(data$y) - buffer; y1 <- max(data$y) + buffer
+    ext <- extent(x0, x1, y0, y1)
+    r   <- raster(ext, res = 10, crs = "+init=epsg:2154")
+    grid <- as(r, "SpatialPixelsDataFrame")
+  }
+  
+  # 3. paramètres HMM → UD
+  Tmax <- 42
+  Ds   <- list(Repos = 1.25, Paturage = 3, Deplacement = 4.5)
+  
+  all_files <- character(0)
+  
+  # 4. boucle sur états et parcs
+  for (state in unique(data$state)) {
+    message("▶ État = ", state)
+    for (parc in unique(data$parc)) {
+      message("   • Parc = ", parc)
+      
+      sub <- data %>%
+        filter(state == state, parc == parc) %>%
+        mutate(time = as.POSIXct(time))
+      if (nrow(sub) == 0) next
+      
+      # 4.1 découpe en bursts
+      ltr <- split_at_gap(sub, max_gap = Tmax)
+      ltr <- as.ltraj(xy = sub[c("x","y")],
+                      date = sub$time,
+                      id   = sub$ID)
+      
+      # 4.2 UD kernelBB
+      hr <- kernelbb(ltr,
+                     sig1     = Ds[[state]],
+                     sig2     = 10,
+                     grid     = grid,
+                     same4all = FALSE,
+                     byburst  = TRUE,
+                     extent   = 0.5,
+                     nalpha   = 25)
+      
+      # 4.3 chargement
+      n_state <- nrow(sub)
+      n_total <- nrow(data %>% filter(parc == parc))
+      charge_parc <- flock_load_from_daily_and_state_UD_kernelbb(
+        UD                 = hr,
+        n_points_state     = n_state,
+        n_points_total     = n_total,
+        flock_size         = flock_size,
+        prop_time_collar_on = prop_time_collar_on
+      )
+      
+      charge_parc$parc  <- parc
+      charge_parc$state <- state
+      
+      # 4.4 sauvegarde
+      save_file <- file.path(
+        save_dir,
+        paste0(save_rds_prefix, state, "_", parc, ".rds")
+      )
+      saveRDS(charge_parc, save_file)
+      all_files <- c(all_files, save_file)
+    }
+  }
+  
+  message("✅ Généré ", length(all_files), " fichiers .rds")
+  return(all_files)
+}

@@ -770,7 +770,82 @@ hmm_fit <- function(data, runPar, output_dir, sampling_period) {
 
 
 
-
+traj_by_night_park <- function (state_rds_file, output_parc_rds_file, window_minutes, eps_dist, min_days){
+  #Lecture des données et création de la colonne date
+  data <- readRDS(state_rds_file) %>%
+    dplyr::mutate(date = lubridate::as_date(time))
+  
+  #Fonction pour extraire les window_minutes du début ou de la fin d’un jour
+  get_window <- function(df, at_start = TRUE) {
+    if (at_start) {
+      df %>% dplyr::filter(time <= min(time) + lubridate::minutes(window_minutes))
+    } else {
+      df %>% dplyr::filter(time >= max(time) - lubridate::minutes(window_minutes))
+    }
+  }
+  
+  #Calcul des centroïdes « morning » / « night »
+  centroids <- data %>%
+    dplyr::group_by(ID, date) %>%
+    do({
+      df_day <- .
+      tibble::tibble(
+        phase = c("morning","night"),
+        x     = c(
+          mean(get_window(df_day, TRUE)$x,  na.rm = TRUE),
+          mean(get_window(df_day, FALSE)$x, na.rm = TRUE)
+        ),
+        y     = c(
+          mean(get_window(df_day, TRUE)$y,  na.rm = TRUE),
+          mean(get_window(df_day, FALSE)$y, na.rm = TRUE)
+        )
+      )
+    }) %>%
+    dplyr::ungroup()
+  
+  #Extraction des centroïdes de nuit et clustering spatial DBSCAN
+  night_centroids <- centroids %>%
+    dplyr::filter(phase == "night") %>%
+    dplyr::ungroup()
+  
+  coords <- as.matrix(night_centroids[, c("x", "y")])
+  res_db <- dbscan(coords, eps = eps_dist, minPts = 1)
+  
+  night_centroids <- night_centroids %>%
+    dplyr::mutate(parc = paste0("Parc_", res_db$cluster))
+  
+  #Fusion des petits « parcs » (< min_days) vers le parc du jour précédent
+  #alculer la taille en jours de chaque parc
+  parc_counts <- night_centroids %>%
+    dplyr::group_by(ID, parc) %>%
+    dplyr::summarise(n_days = n(), .groups = "drop")
+  
+  small_parcs <- parc_counts %>%
+    dplyr::filter(n_days < min_days) %>%
+    dplyr::pull(parc)
+  
+  #réassignation des jours « petits » vers le parc précédent
+  night_centroids <- night_centroids %>%
+    dplyr::arrange(ID, date) %>%
+    dplyr::group_by(ID) %>%
+    dplyr::mutate(
+      parc = ifelse(
+        parc %in% small_parcs & !is.na(dplyr::lag(parc)),
+        dplyr::lag(parc),
+        parc
+      )
+    ) %>%
+    dplyr::ungroup()
+  
+  #Ré‑association du label de parc à la table principale et sauvegarde
+  data_with_parc <- data %>%
+    dplyr::left_join(
+      night_centroids %>% dplyr::select(ID, date, parc),
+      by = c("ID", "date")
+    )
+  
+  saveRDS(data_with_parc, output_parc_rds_file)
+}
 
 
 
