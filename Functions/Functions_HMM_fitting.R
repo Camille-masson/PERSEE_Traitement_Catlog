@@ -770,82 +770,291 @@ hmm_fit <- function(data, runPar, output_dir, sampling_period) {
 
 
 
-traj_by_night_park <- function (state_rds_file, output_parc_rds_file, window_minutes, eps_dist, min_days){
-  #Lecture des données et création de la colonne date
-  data <- readRDS(state_rds_file) %>%
-    dplyr::mutate(date = lubridate::as_date(time))
+
+
+
+
+
+
+
+traj_by_night_park <- function(state_rds_file,
+                               output_parc_rds_file,
+                               window_minutes,
+                               eps_dist,
+                               rare_threshold = 5) {
+  library(dplyr)
+  library(lubridate)
+  library(dbscan)
+  library(tibble)
   
-  #Fonction pour extraire les window_minutes du début ou de la fin d’un jour
+  # 1) Lecture + date
+  data <- readRDS(state_rds_file) %>%
+    mutate(date = as_date(time))
+  
+  # 2) Fenêtre morning / night
   get_window <- function(df, at_start = TRUE) {
     if (at_start) {
-      df %>% dplyr::filter(time <= min(time) + lubridate::minutes(window_minutes))
+      df %>% filter(time <= min(time) + minutes(window_minutes))
     } else {
-      df %>% dplyr::filter(time >= max(time) - lubridate::minutes(window_minutes))
+      df %>% filter(time >= max(time) - minutes(window_minutes))
     }
   }
   
-  #Calcul des centroïdes « morning » / « night »
+  # 3) Centroides matin / soir
   centroids <- data %>%
-    dplyr::group_by(ID, date) %>%
+    group_by(ID, date) %>%
     do({
       df_day <- .
-      tibble::tibble(
+      tibble(
         phase = c("morning","night"),
-        x     = c(
-          mean(get_window(df_day, TRUE)$x,  na.rm = TRUE),
-          mean(get_window(df_day, FALSE)$x, na.rm = TRUE)
-        ),
-        y     = c(
-          mean(get_window(df_day, TRUE)$y,  na.rm = TRUE),
-          mean(get_window(df_day, FALSE)$y, na.rm = TRUE)
-        )
+        x     = c(mean(get_window(df_day, TRUE )$x, na.rm=TRUE),
+                  mean(get_window(df_day, FALSE)$x, na.rm=TRUE)),
+        y     = c(mean(get_window(df_day, TRUE )$y, na.rm=TRUE),
+                  mean(get_window(df_day, FALSE)$y, na.rm=TRUE))
       )
-    }) %>%
-    dplyr::ungroup()
+    }) %>% ungroup()
   
-  #Extraction des centroïdes de nuit et clustering spatial DBSCAN
-  night_centroids <- centroids %>%
-    dplyr::filter(phase == "night") %>%
-    dplyr::ungroup()
+  # 4) DBSCAN global pour assigner un parc
+  coords <- as.matrix(centroids[,c("x","y")])
+  labs  <- dbscan(coords, eps=eps_dist, minPts=1)$cluster
+  centroids <- centroids %>% 
+    mutate(parc = paste0("Parc_", labs))
   
-  coords <- as.matrix(night_centroids[, c("x", "y")])
-  res_db <- dbscan(coords, eps = eps_dist, minPts = 1)
+  # 5) Split morning / night
+  morning <- centroids %>% 
+    filter(phase=="morning") %>% 
+    select(ID, date, parc_m = parc)
+  night   <- centroids %>% 
+    filter(phase=="night")   %>% 
+    select(ID, date, parc_n = parc)
   
-  night_centroids <- night_centroids %>%
-    dplyr::mutate(parc = paste0("Parc_", res_db$cluster))
+  # 6) Flag initial par ID/jour
+  transitions <- inner_join(morning, night, by=c("ID","date")) %>%
+    mutate(jour_de_transition = (parc_m != parc_n))
   
-  #Fusion des petits « parcs » (< min_days) vers le parc du jour précédent
-  #alculer la taille en jours de chaque parc
-  parc_counts <- night_centroids %>%
-    dplyr::group_by(ID, parc) %>%
-    dplyr::summarise(n_days = n(), .groups = "drop")
-  
-  small_parcs <- parc_counts %>%
-    dplyr::filter(n_days < min_days) %>%
-    dplyr::pull(parc)
-  
-  #réassignation des jours « petits » vers le parc précédent
-  night_centroids <- night_centroids %>%
-    dplyr::arrange(ID, date) %>%
-    dplyr::group_by(ID) %>%
-    dplyr::mutate(
-      parc = ifelse(
-        parc %in% small_parcs & !is.na(dplyr::lag(parc)),
-        dplyr::lag(parc),
-        parc
-      )
+  # 7) Consensus à la majorité simple
+  summary_day <- transitions %>%
+    group_by(date) %>%
+    summarise(
+      total   = n(),
+      n_trans = sum(jour_de_transition),
+      .groups = "drop"
     ) %>%
-    dplyr::ungroup()
+    mutate(global = (n_trans > total/2)) %>%
+    select(date, global)
   
-  #Ré‑association du label de parc à la table principale et sauvegarde
-  data_with_parc <- data %>%
-    dplyr::left_join(
-      night_centroids %>% dplyr::select(ID, date, parc),
-      by = c("ID", "date")
+  transitions2 <- transitions %>%
+    select(ID, date) %>%
+    left_join(summary_day, by = "date") %>%
+    rename(jour_de_transition = global)
+  
+  # 8) Reconstruction intermédiaire
+  result <- data %>%
+    left_join(morning,    by = c("ID","date")) %>%
+    left_join(night,      by = c("ID","date")) %>%
+    left_join(transitions2, by = c("ID","date"))
+  
+  # 9) Identification des parcs rares (< rare_threshold jours uniques)
+  rare_parcs <- result %>%
+    distinct(parc_n, date) %>%       # un parc par date
+    count(parc_n, name = "days") %>%
+    filter(days < rare_threshold) %>%
+    pull(parc_n)
+  
+  # 10) Préparer la valeur du parc de nuit du jour précédent
+  prev_night <- result %>%
+    distinct(ID, date, parc_n) %>%
+    mutate(date = date + days(1)) %>%    # on remonte d’un jour
+    rename(prev_parc_n = parc_n)
+  
+  result <- result %>%
+    left_join(prev_night, by = c("ID","date"))
+  
+  # 11) Rattacher les jours dans un parc rare au parc de la nuit précédente
+  result <- result %>%
+    mutate(
+      parc_n = if_else(
+        parc_n %in% rare_parcs & !is.na(prev_parc_n),
+        prev_parc_n,
+        parc_n
+      )
     )
   
-  saveRDS(data_with_parc, output_parc_rds_file)
+  # 12) Recalculer jour_de_transition sur ces nouveaux parcs
+  result <- result %>%
+    mutate(jour_de_transition = (parc_m != parc_n))
+  
+  # 13) Nettoyage & renommage final
+  final <- result %>%
+    select(-prev_parc_n) %>%
+    rename(parc = parc_n)               # on garde le parc de nuit (corrigé)
+  
+  # 14) Sauvegarde
+  saveRDS(final, output_parc_rds_file)
+  message("→ Écrit avec succès : ", output_parc_rds_file)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+traj_by_night_park_count <- function(state_rds_file,
+                               output_parc_rds_file,
+                               window_minutes,
+                               eps_dist,
+                               rare_threshold   = 5,
+                               require_consec   = FALSE,
+                               min_consec_nights = 3) {
+  library(dplyr); library(lubridate); library(dbscan); library(tibble)
+  
+  ### 1) Lecture + date
+  data <- readRDS(state_rds_file) %>%
+    mutate(date = as_date(time))
+  
+  ### 2) Fenêtre morning / night
+  get_window <- function(df, at_start = TRUE) {
+    if (at_start) {
+      df %>% filter(time <= min(time) + minutes(window_minutes))
+    } else {
+      df %>% filter(time >= max(time) - minutes(window_minutes))
+    }
+  }
+  
+  ### 3) Centroides matin / soir
+  centroids <- data %>%
+    group_by(ID, date) %>%
+    do({
+      df_day <- .
+      tibble(
+        phase = c("morning","night"),
+        x     = c(mean(get_window(df_day, TRUE )$x, na.rm=TRUE),
+                  mean(get_window(df_day, FALSE)$x, na.rm=TRUE)),
+        y     = c(mean(get_window(df_day, TRUE )$y, na.rm=TRUE),
+                  mean(get_window(df_day, FALSE)$y, na.rm=TRUE))
+      )
+    }) %>% ungroup()
+  
+  ### 4) Clustering DBSCAN
+  coords <- as.matrix(centroids[,c("x","y")])
+  labs  <- dbscan(coords, eps=eps_dist, minPts=1)$cluster
+  centroids <- centroids %>% mutate(parc = paste0("Parc_", labs))
+  
+  ### 5) Split morning / night
+  morning <- centroids %>% filter(phase=="morning") %>% select(ID, date, parc_m = parc)
+  night   <- centroids %>% filter(phase=="night"  ) %>% select(ID, date, parc_n = parc)
+  
+  ### 6) Flag initial (par ID/jour)
+  transitions <- inner_join(morning, night, by=c("ID","date")) %>%
+    mutate(jour_de_transition = (parc_m != parc_n))
+  
+  ### 7) Consensus à la majorité simple
+  summary_day <- transitions %>%
+    group_by(date) %>%
+    summarise(
+      total   = n(),
+      n_trans = sum(jour_de_transition),
+      .groups = "drop"
+    ) %>%
+    mutate(global = (n_trans > total/2)) %>%
+    select(date, global)
+  
+  transitions2 <- transitions %>%
+    select(ID, date) %>%
+    left_join(summary_day, by="date") %>%
+    rename(jour_de_transition = global)
+  
+  ### 8) Reconstruction intermédiaire
+  result <- data %>%
+    left_join(morning,      by=c("ID","date")) %>%
+    left_join(night,        by=c("ID","date")) %>%
+    left_join(transitions2, by=c("ID","date"))
+  
+  ### 9) Rattachement des parcs « rares »
+  rare_parcs <- result %>%
+    distinct(parc_n, date) %>% 
+    count(parc_n, name="days") %>%
+    filter(days < rare_threshold) %>%
+    pull(parc_n)
+  
+  prev_night <- result %>%
+    distinct(ID, date, parc_n) %>%
+    mutate(date = date + days(1)) %>%
+    rename(prev_parc_n = parc_n)
+  
+  result <- result %>%
+    left_join(prev_night, by=c("ID","date")) %>%
+    mutate(
+      parc_n = if_else(
+        parc_n %in% rare_parcs & !is.na(prev_parc_n),
+        prev_parc_n,
+        parc_n
+      )
+    )
+  
+  ### 10) Recalcul du flag après rattachement
+  result <- result %>%
+    mutate(jour_de_transition = (parc_m != parc_n))
+  
+  ### 11) Option : filtre sur les transitions durables via RLE
+  if (require_consec) {
+    # a) on calcule le parc majoritaire par date
+    herd_parc_df <- result %>%
+      distinct(ID, date, parc = parc_n) %>%
+      count(date, parc) %>%
+      group_by(date) %>%
+      slice_max(n, n = 1, with_ties = FALSE) %>%
+      arrange(date) %>%
+      ungroup()
+    
+    # b) on fait du rle() sur la colonne 'parc'
+    values <- as.character(herd_parc_df$parc)
+    dates  <- herd_parc_df$date
+    r      <- rle(values)
+    ends   <- cumsum(r$lengths)
+    starts <- ends - r$lengths + 1
+    
+    # c) on récupère la date de début de chaque run assez long
+    good_runs <- which(r$lengths >= min_consec_nights)
+    transition_dates <- dates[starts[good_runs]]
+    
+    # d) on marque TRUE uniquement pour ces dates-là
+    result <- result %>%
+      mutate(jour_de_transition =
+               date %in% transition_dates)
+  }
+  ### 12) Final & sauvegarde
+  final <- result %>%
+    select(-prev_parc_n) %>%
+    rename(parc = parc_n)
+  
+  saveRDS(final, output_parc_rds_file)
+  message("→ Écrit avec succès : ", output_parc_rds_file)
+}
+
+
+
+
+
 
 
 

@@ -598,3 +598,232 @@ flock_load_by_parc_and_state_to_rds_kernelbb_Auto_grid <- function(data,
   message("✅ Généré ", length(all_files), " fichiers .rds")
   return(all_files)
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+compute_charge_by_park <- function(
+    input_load_day_state_rds,
+    input_parc_rds_file,
+    output_park_day_state_rds,
+    output_park_state_rds,
+    output_park_rds
+) {
+  # 0) librairies
+  library(dplyr)
+  library(lubridate)
+  
+  # 1) chargement des données
+  charge_day_state <- readRDS(input_load_day_state_rds)
+  viterbi_parc     <- readRDS(input_parc_rds_file)
+  
+  # 2) calcul du jour julien (DOY) dans viterbi_parc
+  viterbi_parc <- viterbi_parc %>%
+    mutate(
+      date = as.Date(date),
+      day  = yday(date)
+    )
+  
+  # 3) parc « majoritaire » par jour
+  day_park <- viterbi_parc %>%
+    count(day, parc) %>%
+    group_by(day) %>%
+    slice_max(n, with_ties = FALSE) %>%
+    select(day, parc)
+  
+  # 4) ajout de la colonne parc à chaque ligne de charge_day_state
+  charge_with_park <- charge_day_state %>%
+    left_join(day_park, by = "day")
+  
+  # 5a) agrégation PAR PIXEL + JOUR + ÉTAT + PARC
+  charge_park_day_state <- charge_with_park %>%
+    group_by(x, y, day, state, parc) %>%
+    summarise(
+      Charge = sum(Charge, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 5b) agrégation PAR PARC + ÉTAT
+  charge_park_state <- charge_park_day_state %>%
+    group_by(x, y, parc, state) %>%
+    summarise(
+      Charge = sum(Charge, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 5c) agrégation PAR PARC toutes nuits et états confondus
+  charge_park <- charge_park_state %>%
+    group_by(x, y, parc) %>%
+    summarise(
+      Charge = sum(Charge, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 6) sauvegardes
+  saveRDS(charge_park_day_state, output_park_day_state_rds)
+  saveRDS(charge_park_state,     output_park_state_rds)
+  saveRDS(charge_park,           output_park_rds)
+  
+  # 7) message de fin
+  message("Agrégations enregistrées :\n",
+          "   - jour/état/park : ", output_park_day_state_rds, "\n",
+          "   - état/park      : ", output_park_state_rds, "\n",
+          "   - park           : ", output_park_rds)
+  
+  # 8) retour invisible
+  invisible(list(
+    park_day_state = charge_park_day_state,
+    park_state     = charge_park_state,
+    park           = charge_park
+  ))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+compute_charge_by_park_no_transition <- function(
+    input_load_day_state_rds,
+    input_parc_rds_file,
+    output_park_day_state_rds,
+    output_park_state_rds,
+    output_park_rds
+) {
+  # librairies
+  library(dplyr)
+  library(lubridate)
+  
+  # 1) chargement des données
+  charge_day_state <- readRDS(input_load_day_state_rds)
+  viterbi_parc     <- readRDS(input_parc_rds_file) %>%
+    mutate(
+      date = as.Date(date),
+      day  = yday(date)
+    )
+  
+  # 2) on identifie les jours de transition (DOY)
+  transition_days <- viterbi_parc %>%
+    filter(jour_de_transition) %>%
+    distinct(day) %>%
+    pull(day)
+  
+  # 3) parc « majoritaire » par jour
+  day_park <- viterbi_parc %>%
+    count(day, parc) %>%
+    group_by(day) %>%
+    slice_max(n, with_ties = FALSE) %>%
+    select(day, parc)
+  
+  # 4) on joint et on exclut les jours de transition
+  charge_filtered <- charge_day_state %>%
+    left_join(day_park, by = "day") %>%
+    filter(! day %in% transition_days)
+  
+  # 5a) agrégation PAR PIXEL + JOUR + ÉTAT + PARC
+  charge_park_day_state <- charge_filtered %>%
+    group_by(x, y, day, state, parc) %>%
+    summarise(
+      Charge = sum(Charge, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 5b) agrégation PAR PARC + ÉTAT
+  charge_park_state <- charge_park_day_state %>%
+    group_by(x, y, parc, state) %>%
+    summarise(
+      Charge = sum(Charge, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 5c) agrégation PAR PARC (tous états et tous jours non-transition)
+  charge_park <- charge_park_state %>%
+    group_by(x, y, parc) %>%
+    summarise(
+      Charge = sum(Charge, na.rm = TRUE),
+      .groups = "drop"
+    )
+  
+  # 6) sauvegardes
+  saveRDS(charge_park_day_state, output_park_day_state_rds)
+  saveRDS(charge_park_state,     output_park_state_rds)
+  saveRDS(charge_park,           output_park_rds)
+  
+  # 7) message de fin
+  message("Agrégations sans jours de transition enregistrées :\n",
+          "   - jour/état/park : ", output_park_day_state_rds, "\n",
+          "   - état/park      : ", output_park_state_rds, "\n",
+          "   - park           : ", output_park_rds)
+  
+  invisible(list(
+    park_day_state = charge_park_day_state,
+    park_state     = charge_park_state,
+    park           = charge_park
+  ))
+}

@@ -9,7 +9,7 @@ source("config.R")
 # Définition de l'année d'analyse et des alpages à traiter 
 YEAR = 2022
 alpage = "Cayolle"
-alpages = "Cayolle"
+alpages = c("Cayolle","Viso","Sanguiniere")
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -377,40 +377,55 @@ if (TRUE) {
 
 #### 3.1 HMM with night park #### 
 #-------------------------------#
-
-if (FALSE) {
+if (TRUE) {
   library(dplyr)
   library(lubridate)
   library(dbscan)
   source(file.path(functions_dir, "Functions_HMM_fitting.R"))
   
-  
-  
-  for (alpage in alpages){
-  # ENTREE
-  # Dossier contenant les fichiers du comportement
-  case_state_file = file.path(output_dir, "3. HMM_comportement")
-  # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
-  state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
-  
-  
-  # SORTIE
-  # Un .RDS des données 
-  output_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
-  
-  
-  # CODE 
-  
-  traj_by_night_park(state_rds_file, output_parc_rds_file, 
-                     window_minutes = 45, eps_dist = 500, min_days = 5)
-  
-  
+  for (alpage in alpages) {
+    # ENTREE
+    case_state_dir      <- file.path(output_dir, "3. HMM_comportement")
+    state_rds_file      <- file.path(
+      case_state_dir,
+      paste0("Catlog_", YEAR, "_", alpage, "_viterbi.rds")
+    )
+    
+    # SORTIE
+    output_parc_rds_file <- file.path(
+      case_state_dir,
+      paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds")
+    )
+    
+    
+    
+    # CODE
+    # Alpages “Cayolle” et “Sanguiniere” : seuil 500 m, sans critère de durabilité
+    if (alpage %in% c("Cayolle", "Sanguiniere")) {
+      traj_by_night_park(
+        state_rds_file       = state_rds_file,
+        output_parc_rds_file = output_parc_rds_file,
+        window_minutes       = 30,
+        eps_dist             = 500,
+        rare_threshold       = 5
+      )
+    }
+    
+    # Alpage “Viso” : même params + critère de durabilité (3 nuits)
+    if (alpage == "Viso") {
+      traj_by_night_park_count(
+        state_rds_file       = state_rds_file,
+        output_parc_rds_file = output_parc_rds_file,
+        window_minutes       = 30,
+        eps_dist             = 500,
+        rare_threshold       = 5,
+        require_consec       = TRUE,
+        min_consec_nights    = 3
+      )
+    }
   }
-  
-  
-  
 }
-  
+
   
   
   
@@ -421,58 +436,103 @@ if (FALSE) {
   
 # A mettre dans visu !
   
-if(TRUE){
-  
-  
-  
-  
-  
-  
-  # 1. Charger les packages
-  library(dplyr)
-  library(sf)
-  
-
-  
-  
-  for (alpage in alpages){
-  # ENTREE
-  # Dossier contenant les fichiers du comportement
-  case_state_file = file.path(output_dir, "3. HMM_comportement")
-  # Un .RDS des données 
-  input_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
-  
-  # SORTIE
-  output_gpkg_file <- file.path(case_state_file, paste0("Trajectoire_by_night_parc",YEAR,"_",alpage, ".gpkg"))
 
 
-  # 2. Convertir votre table data_with_parc en sf (points)
-  #    en donnant le système de coordonnées (Lambert‑93 = EPSG:2154)
-  data_sf <- readRDS(input_parc_rds_file) %>%
+
+data_sf <- readRDS(input_consensus_file)
+# nombre de lignes (ID×date) avec TRUE
+n_transitions <- sum(data_sf$jour_de_transition, na.rm = TRUE)
+message("Nombre de paires ID-date en transition : ", n_transitions)
+
+# (optionnel) nombre de dates uniques en transition
+n_dates <- data_sf %>%
+  dplyr::filter(jour_de_transition) %>%
+  dplyr::pull(date) %>%
+  unique() %>%
+  length()
+message("Nombre de jours (dates) de transition : ", n_dates)
+
+
+
+
+
+
+
+
+
+# Choix : conserver ou non les jours de transition dans les trajectoires
+keep_transition_days <- TRUE  # passe à FALSE pour les exclure
+
+for (alpage in alpages) {
+  
+  # 0) chemins
+  case_state_dir       <- file.path(output_dir, "3. HMM_comportement")
+  input_consensus_file <- file.path(
+    case_state_dir,
+    paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc_v10.rds")  # <- ton RDS à 8 dates
+  )
+  output_gpkg_file     <- file.path(
+    case_state_dir,
+    paste0("Trajectoire_by_night_parc_", YEAR, "_", alpage, "_V15.gpkg")
+  )
+  
+  # 1) Lecture + conversion en sf
+  data_sf <- readRDS(input_consensus_file) %>%
     sf::st_as_sf(coords = c("x", "y"), crs = 2154)
   
-  # 3. Construire une LINESTRING par ID/date/parc
+  # 2) On détermine LES 8 dates de transition
+  transition_dates <- data_sf %>%
+    sf::st_drop_geometry() %>%
+    dplyr::filter(jour_de_transition) %>%
+    dplyr::distinct(date)
+  
+  n_dates <- nrow(transition_dates)
+  message("Alpage ", alpage, " : ", n_dates,
+          " jour(s) de transition détecté(s).")  # => devrait afficher 8
+  
+  # 3) (Optionnel) on exclut ou pas ces jours
+  if (!keep_transition_days) {
+    data_sf <- data_sf %>%
+      dplyr::filter(! date %in% transition_dates$date)
+    message("→ Les jours de transition ont été exclus.")
+  } else {
+    message("→ Les jours de transition ont été conservés.")
+  }
+  
+  # 4) Construction des trajectoires par ID / date / parc
   traj_sf <- data_sf %>%
-    arrange(time) %>%                       # s’assurer de l’ordre chronologique
-    group_by(ID, date, parc) %>%            # un groupe = une trajectoire dans un parc
-    summarise(
-      geometry = st_combine(geometry),      # combiner tous les points
-      .groups = "drop"
+    dplyr::arrange(time) %>%
+    dplyr::group_by(ID, date, parc, jour_de_transition) %>%
+    dplyr::summarise(
+      geometry = sf::st_combine(geometry),
+      .groups  = "drop"
     ) %>%
-    st_cast("LINESTRING")                   # convertir en ligne
+    sf::st_cast("LINESTRING")
   
+  # 5) Écriture dans un Geopackage (on écrase d'abord si besoin)
+  if (file.exists(output_gpkg_file)) file.remove(output_gpkg_file)
   
-  # (Optionnel) export des points pour vérification
   sf::st_write(
     data_sf,
     output_gpkg_file,
-    layer = "points",
-    driver = "GPKG",
-    delete_layer = FALSE
+    layer        = "points",
+    driver       = "GPKG"
   )
-  
+  sf::st_write(
+    traj_sf,
+    output_gpkg_file,
+    layer        = "trajectoires",
+    driver       = "GPKG"
+  )
 }
-}
+
+
+
+
+
+
+
+
 
 
 
@@ -613,42 +673,14 @@ if (TRUE){
     rm(charge)
     
     
+    
+    
+    
+    ### 4.1 Extensions avec le recalcule du chargement avec la notion de parc ###
+    ###-----------------------------------------------------------------------###
     if (TRUE){
       
-      library(dplyr)
-      library(lubridate)
-      library(dbscan)
-      source(file.path(functions_dir, "Functions_HMM_fitting.R"))
       
-      
-      
-      for (alpage in alpages){
-        # ENTREE
-        # Dossier contenant les fichiers du comportement
-        case_state_file = file.path(output_dir, "3. HMM_comportement")
-        # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
-        state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
-        
-        
-        # SORTIE
-        # Un .RDS des données 
-        output_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
-        
-        
-        # CODE 
-        
-        traj_by_night_park(state_rds_file, output_parc_rds_file, 
-                           window_minutes = 45, eps_dist = 500, min_days = 5)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         # ENTREE
         # Dossier
         case = file.path(output_dir, "4. Chargements_calcules")
@@ -661,7 +693,7 @@ if (TRUE){
         input_parc_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
         
         
-        # SORTIE
+        
         # SORTIE
         output_park_day_state_rds <- file.path(
           load_case,
@@ -675,6 +707,42 @@ if (TRUE){
           load_case,
           paste0("by_park_", YEAR, "_", alpage, ".rds")
         )
+        
+        
+        output_park_day_state_transition_filtered_rds <- file.path(
+          load_case,
+          paste0("by_park_day_and_state_transition_filtered_", YEAR, "_", alpage, ".rds")
+        )
+        output_park_state_transition_filtered_rds     <- file.path(
+          load_case,
+          paste0("by_park_and_state_transition_filtered_", YEAR, "_", alpage, ".rds")
+        )
+        output_park_transition_filtered_rds           <- file.path(
+          load_case,
+          paste0("by_park_transition_filtered_", YEAR, "_", alpage, ".rds")
+        )
+        
+        
+        compute_charge_by_park(input_load_day_state_rds, input_parc_rds_file, 
+                               output_park_day_state_rds, output_park_state_rds, 
+                               output_park_rds)
+        
+        
+        
+        
+        
+        
+        compute_charge_by_park_no_transition(input_load_day_state_rds, input_parc_rds_file,
+                                             output_park_day_state_transition_filtered_rds, output_park_state_transition_filtered_rds,
+                                             output_park_transition_filtered_rds)
+        
+        
+        
+        
+        
+        
+        
+        
         
         
         
