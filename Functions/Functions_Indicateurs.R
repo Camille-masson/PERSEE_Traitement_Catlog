@@ -1331,3 +1331,85 @@ gif_plot_load_by_veget_day <- function(load_veget_rds, load_veget_day_gif, delay
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# (a) Raster total pour chaque parc
+park_total_flock_load_tif <- function(park_rds, output_dir, YEAR, alpage, res_raster = 10) {
+  # lecture des données (colonnes x, y, parc, Charge)
+  df <- readRDS(park_rds)
+  coordinates(df) <- ~ x + y
+  crs(df) <- CRS("+init=epsg:2154")
+  
+  # template unique
+  tpl <- raster(extent(df), resolution = res_raster, crs = crs(df))
+  
+  # itération sur chaque parc
+  for (park_id in unique(df$parc)) {
+    df_sub <- df[df$parc == park_id, ]
+    r      <- rasterize(df_sub, tpl, field = "Charge", fun = mean, background = NA)
+    
+    out_file <- file.path(
+      output_dir,
+      paste0("total_", YEAR, "_", alpage, "_", park_id, ".tif")
+    )
+    if (file.exists(out_file)) file.remove(out_file)
+    writeRaster(r, filename = out_file, format = "GTiff", overwrite = TRUE)
+    message("→ Raster total écrit pour le parc '", park_id, "' : ", out_file)
+  }
+}
+
+
+# (b) Raster pour chaque parc ET chaque état
+park_state_flock_load_tif <- function(park_state_rds, output_dir, YEAR, alpage, res_raster = 10) {
+  # lecture des données (colonnes x, y, parc, state, Charge)
+  df <- readRDS(park_state_rds)
+  coordinates(df) <- ~ x + y
+  crs(df) <- CRS("+init=epsg:2154")
+  
+  # template unique
+  tpl <- raster(extent(df), resolution = res_raster, crs = crs(df))
+  
+  # itération parc → état
+  for (park_id in unique(df$parc)) {
+    df_park <- df[df$parc == park_id, ]
+    for (st in unique(df_park$state)) {
+      df_sub <- df_park[df_park$state == st, ]
+      r      <- rasterize(df_sub, tpl, field = "Charge", fun = mean, background = NA)
+      
+      out_file <- file.path(
+        output_dir,
+        paste0("park_", park_id, "_", st, "_", YEAR, "_", alpage, ".tif")
+      )
+      if (file.exists(out_file)) file.remove(out_file)
+      writeRaster(r, filename = out_file, format = "GTiff", overwrite = TRUE)
+      message("→ Raster écrit pour parc '", park_id, "', état '", st, "': ", out_file)
+    }
+  }
+}
+

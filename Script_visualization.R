@@ -90,6 +90,14 @@ if (FALSE) {
   state_rds_prefix = file.path(case_flock_alpage_file, paste0("by_state_",YEAR,"_",alpage,".rds"))
   # Un .RDS par alpage contenant la charge totale sur toute la saison
   total_rds_prefix = file.path(case_flock_alpage_file, paste0("total_",YEAR,"_",alpage,".rds"))
+  # Un .RDS par parc et état
+  park_state_rds <- file.path(case_flock_alpage_file, paste0("by_park_and_state_", YEAR,"_",alpage,".rds"))
+  # Un .RDS par parc
+  park_tot_rds   <- file.path(case_flock_alpage_file, paste0("by_park_", YEAR,"_",alpage,".rds"))
+  
+  
+  
+  
   
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
   case_UP_file = file.path(raster_dir, "UP")
@@ -100,7 +108,7 @@ if (FALSE) {
   raw_data_dir = file.path(data_dir,paste0("Colliers_",YEAR,"_brutes"))
   # Un data.frame contenant les dates de pose et de retrait des colliers
   alpage_info_file <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
-  )
+  
   # SORTIE 
   
   #Création du dossier de sortie des indicateur pour la visualistaion
@@ -137,13 +145,13 @@ if (FALSE) {
   # CODE
 
   #Indicateur : Charge total .TIF
-  if (TRUE) {
+  if (FALSE) {
   total_flock_load_tif(total_rds_prefix, output_flock_tot_tif, output_flock_tot_tif_crop, UP_file, alpage, alpage_info_file)
     }
   
   
   #Indicateur : Charge_by_state
-  if (TRUE) {
+  if (FALSE) {
   state_flock_load_tif(state_rds_prefix,output_flock_repos_tif,output_flock_deplacement_tif, output_flock_paturage_tif,
                        output_flock_repos_tif_crop, output_flock_deplacement_tif_crop , output_flock_paturage_tif_crop,
                        UP_file, alpage, alpage_info_file)
@@ -157,8 +165,8 @@ if (FALSE) {
     
   }
   
-  if (TRUE){
-  # Par quinzaine
+  #Indicateur : Charge par quinzaine
+  if (FALSE){
   quinzaine_flock_load_tif_nostack(daily_rds_file = daily_rds_file,
                                    output_case_alpage = output_case_alpage,
                                    UP_file = UP_file,
@@ -168,6 +176,29 @@ if (FALSE) {
                                    res_raster = 10,
                                    CROP = "NO")
   }
+  
+  
+  #Indicateur : Charge par parc
+  if (TRUE){
+    park_total_flock_load_tif(
+      park_rds    = park_tot_rds,
+      output_dir  = output_case_alpage,
+      YEAR        = YEAR,
+      alpage      = alpage,
+      res_raster  = 10              # ou la résolution souhaitée
+    )
+  }
+  
+  if (TRUE){
+  
+  #Indicateur : Charge par parc et état
+  park_state_flock_load_tif(park_state_rds,
+                            output_case_alpage,
+                            UP_file, alpage, alpage_info_file)
+  }
+  
+  
+  
   
   }
   
