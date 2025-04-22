@@ -9,9 +9,9 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2024
+YEAR <- 2022
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Viso"
+alpage <- "Cayolle"
 alpages <- c("Sanguiniere","Cayolle")
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
@@ -94,8 +94,10 @@ if (FALSE) {
   park_state_rds <- file.path(case_flock_alpage_file, paste0("by_park_and_state_", YEAR,"_",alpage,".rds"))
   # Un .RDS par parc
   park_tot_rds   <- file.path(case_flock_alpage_file, paste0("by_park_", YEAR,"_",alpage,".rds"))
-  
-  
+  # Un .RDS par parc et état filtré par 
+  park_state_filtered_rds <- file.path(case_flock_alpage_file, paste0("by_park_and_state_transition_filtered_", YEAR,"_",alpage,".rds"))
+  # Un .RDS par parc
+  park_tot_filterd_rds   <- file.path(case_flock_alpage_file, paste0("by_park_transition_filtered_", YEAR,"_",alpage,".rds"))
   
   
   
@@ -127,9 +129,7 @@ if (FALSE) {
     dir.create(output_case_alpage, recursive = TRUE)
   }
   
-  # Un .TIF par alpage contenant les charges journalières
-  output_flock_daily_tif = file.path(output_case_alpage, paste0("by_day_and_state_",YEAR,"_",alpage,".tif"))
-  output_flock_daily_tif_crop = file.path(output_case_alpage, paste0("by_day_and_state_",YEAR,"_",alpage,"_crop.tif"))
+  
   # Un .TIF par alpage contenant les charges par comportement
   output_flock_repos_tif = file.path(output_case_alpage, paste0("repos",YEAR,"_",alpage,".tif"))
   output_flock_deplacement_tif = file.path(output_case_alpage, paste0("deplacement",YEAR,"_",alpage,".tif"))
@@ -197,7 +197,33 @@ if (FALSE) {
                             UP_file, alpage, alpage_info_file)
   }
   
+ 
   
+  
+  #Indicateur : Charge par parc filtered
+  if (TRUE){
+    park_total_flock_load_tif_filtered(
+      park_rds    = park_tot_filterd_rds,
+      output_dir  = output_case_alpage,
+      YEAR        = YEAR,
+      alpage      = alpage,
+      res_raster  = 10              
+    )
+  }
+  
+  if (TRUE){
+    
+    #Indicateur : Charge par parc et état filtered
+    park_state_flock_load_tif_filtered(park_state_filtered_rds ,
+                              output_case_alpage,
+                              UP_file, alpage, alpage_info_file)
+  }
+  
+  
+  
+  
+  
+   
   
   
   }
