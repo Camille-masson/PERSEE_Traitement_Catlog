@@ -7,7 +7,7 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 2024
+YEAR = 2023
 alpage = "Viso"
 alpages = "Viso"
 
