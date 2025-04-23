@@ -7,9 +7,9 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 2022
-alpage = "Cayolle"
-alpages = c("Cayolle","Viso","Sanguiniere")
+YEAR = 2024
+alpage = "Viso"
+alpages = "Viso"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -680,7 +680,7 @@ if (TRUE){
     ###-----------------------------------------------------------------------###
     if (TRUE){
       
-      
+      for (alpage in alpages){
         # ENTREE
         # Dossier
         case = file.path(output_dir, "4. Chargements_calcules")
@@ -722,118 +722,36 @@ if (TRUE){
           paste0("by_park_transition_filtered_", YEAR, "_", alpage, ".rds")
         )
         
-        
+        if (FALSE){
         compute_charge_by_park(input_load_day_state_rds, input_parc_rds_file, 
                                output_park_day_state_rds, output_park_state_rds, 
                                output_park_rds)
         
+        }
         
-        
-        
-        
-        
+        if (FALSE){
         compute_charge_by_park_no_transition(input_load_day_state_rds, input_parc_rds_file,
-                                             output_park_day_state_transition_filtered_rds, output_park_state_transition_filtered_rds,
+                                             output_park_day_state_transition_filtered_rds, 
+                                             output_park_state_transition_filtered_rds,
                                              output_park_transition_filtered_rds)
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        # CODE A METTRE EN FONCTION 
-        
-        library(dplyr)
-        library(lubridate)
-        
-       
-        # ————————————————————————————————
-        # 1) Chargement des données
-        charge_day_state <- readRDS(input_load_day_state_rds)
-        viterbi_parc     <- readRDS(input_parc_rds_file)
-        
-        # ————————————————————————————————
-        # 2) Calcul du jour julien (DOY) dans viterbi_parc
-        viterbi_parc <- viterbi_parc %>%
-          mutate(
-            date = as.Date(date),
-            day  = yday(date)
+        }
+          
+          
+        if (TRUE) {
+          compute_charge_by_park_no_transition_chunked(
+            input_load_day_state_rds,
+            input_parc_rds_file,
+            output_park_day_state_transition_filtered_rds, 
+            output_park_state_transition_filtered_rds,
+            output_park_transition_filtered_rds,
+            chunk_size = 20
           )
-        
-        # 3) Parc « majoritaire » par jour
-        day_park <- viterbi_parc %>%
-          count(day, parc) %>%
-          group_by(day) %>%
-          slice_max(n, with_ties = FALSE) %>%
-          dplyr::select(day, parc)
-        
-        # ————————————————————————————————
-        # 4) On ajoute la colonne parc à chaque ligne spatiale
-        charge_with_park <- charge_day_state %>%
-          left_join(day_park, by = "day")
-        
-        # ————————————————————————————————
-        # 5) Les 3 niveaux d’agrégation
-        
-        # 5a) PAR PIXEL (x,y) + JOUR + ÉTAT + PARC
-        charge_park_day_state <- charge_with_park %>%
-          group_by(x, y, day, state, parc) %>%
-          summarise(
-            Charge = sum(Charge, na.rm = TRUE),
-            .groups = "drop"
-          )
-        
-        # 5b) PAR PARC + ÉTAT (toutes nuits confondues)
-        charge_park_state <- charge_park_day_state %>%
-          group_by(x, y, parc, state) %>%
-          summarise(
-            Charge = sum(Charge, na.rm = TRUE),
-            .groups = "drop"
-          )
-        
-        # 5c) PAR PARC (tous états et toutes nuits confondus)
-        charge_park <- charge_park_state %>%
-          group_by(x,y,parc) %>%
-          summarise(
-            Charge = sum(Charge, na.rm = TRUE),
-            .groups = "drop"
-          )
-        
-        # ————————————————————————————————
-        # 6) Sauvegardes
-        saveRDS(charge_park_day_state, output_park_day_state_rds)
-        saveRDS(charge_park_state,     output_park_state_rds)
-        saveRDS(charge_park,           output_park_rds)
-        
-        # ————————————————————————————————
-        # 7) Nettoyage
-        rm(
-          charge_day_state,
-          viterbi_parc,
-          day_park,
-          charge_with_park,
-          charge_park_day_state,
-          charge_park_state,
-          charge_park
-        )
+        }
         
         
         
         
-        
-        
-        
-        
-        
-        
-        
-        
+      }
         
         
         

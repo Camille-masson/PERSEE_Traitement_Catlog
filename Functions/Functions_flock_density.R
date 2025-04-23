@@ -662,7 +662,7 @@ compute_charge_by_park <- function(
     count(day, parc) %>%
     group_by(day) %>%
     slice_max(n, with_ties = FALSE) %>%
-    select(day, parc)
+    dplyr::select(day, parc)
   
   # 4) ajout de la colonne parc à chaque ligne de charge_day_state
   charge_with_park <- charge_day_state %>%
@@ -779,7 +779,7 @@ compute_charge_by_park_no_transition <- function(
     count(day, parc) %>%
     group_by(day) %>%
     slice_max(n, with_ties = FALSE) %>%
-    select(day, parc)
+    dplyr::select(day, parc)
   
   # 4) on joint et on exclut les jours de transition
   charge_filtered <- charge_day_state %>%
@@ -825,5 +825,199 @@ compute_charge_by_park_no_transition <- function(
     park_day_state = charge_park_day_state,
     park_state     = charge_park_state,
     park           = charge_park
+  ))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+compute_charge_by_park_no_transition_optimized <- function(
+    input_load_day_state_rds,
+    input_parc_rds_file,
+    output_park_day_state_rds,
+    output_park_state_rds,
+    output_park_rds
+) {
+  # Chargement des librairies
+  library(data.table)
+  library(lubridate)
+  
+  # 1) Chargement et préparation de viterbi_parc
+  viterbi_parc <- readRDS(input_parc_rds_file)
+  setDT(viterbi_parc)
+  viterbi_parc[, date := as.Date(date)]
+  viterbi_parc[, day  := yday(date)]
+  
+  # Identification des jours de transition
+  transition_days <- unique(viterbi_parc[jour_de_transition == TRUE, day])
+  
+  # Détermination du parc majoritaire par jour
+  day_park <- viterbi_parc[, .N, by = .(day, parc)]
+  setorder(day_park, day, -N)
+  day_park <- day_park[, .SD[1], by = day]
+  day_park <- day_park[, .(day, parc)]
+  
+  # Libération de mémoire
+  rm(viterbi_parc)
+  gc()
+  
+  # 2) Chargement et filtrage de charge_day_state
+  charge_dt <- readRDS(input_load_day_state_rds)
+  setDT(charge_dt)
+  charge_dt <- charge_dt[!day %in% transition_days]
+  
+  # Jointure avec le parc majoritaire (fusion simple pour éviter les problèmes de promesse)
+  charge_dt <- merge(charge_dt, day_park, by = "day", all = FALSE)
+  
+  # 3a) Agrégation PAR PIXEL + JOUR + ÉTAT + PARC
+  charge_park_day_state <- charge_dt[, .(
+    Charge = sum(Charge, na.rm = TRUE)
+  ), by = .(x, y, day, state, parc)]
+  saveRDS(charge_park_day_state, output_park_day_state_rds)
+  
+  # Nettoyage intermédiaire
+  rm(charge_dt)
+  gc()
+  
+  # 3b) Agrégation PAR PARC + ÉTAT
+  charge_park_state <- charge_park_day_state[, .(
+    Charge = sum(Charge, na.rm = TRUE)
+  ), by = .(x, y, parc, state)]
+  saveRDS(charge_park_state, output_park_state_rds)
+  
+  # Libération mémoire
+  rm(charge_park_day_state)
+  gc()
+  
+  # 3c) Agrégation PAR PARC (tous états et tous jours non-transition)
+  charge_park <- charge_park_state[, .(
+    Charge = sum(Charge, na.rm = TRUE)
+  ), by = .(x, y, parc)]
+  saveRDS(charge_park, output_park_rds)
+  
+  # Nettoyage final
+  rm(charge_park_state)
+  gc()
+  
+  # Message de fin
+  message("Agrégations sans jours de transition enregistrées :\n",
+          "   - jour/état/park : ", output_park_day_state_rds, "\n",
+          "   - état/park      : ", output_park_state_rds, "\n",
+          "   - park           : ", output_park_rds)
+  
+  invisible(list(
+    park_day_state = output_park_day_state_rds,
+    park_state     = output_park_state_rds,
+    park           = output_park_rds
+  ))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+compute_charge_by_park_no_transition_chunked <- function(
+    input_load_day_state_rds,
+    input_parc_rds_file,
+    output_park_day_state_rds,
+    output_park_state_rds,
+    output_park_rds,
+    chunk_size = 20 # nombre de jours par chunk
+) {
+  library(data.table)
+  library(lubridate)
+  
+  # Chargement et traitement de viterbi_parc
+  viterbi_parc <- readRDS(input_parc_rds_file)
+  setDT(viterbi_parc)
+  viterbi_parc[, `:=`(date = as.Date(date), day = yday(date))]
+  
+  # Jours de transition
+  transition_days <- unique(viterbi_parc[jour_de_transition == TRUE, day])
+  
+  # Parc majoritaire par jour
+  day_park <- viterbi_parc[, .N, by = .(day, parc)][order(day, -N)][, .SD[1], by = day][, .(day, parc)]
+  non_transition_days <- setdiff(day_park$day, transition_days)
+  
+  rm(viterbi_parc)
+  invisible(gc())
+  
+  # Préparation containers résultats
+  result_day_state <- list()
+  i <- 1
+  
+  # Chargement de la charge complète (nécessaire pour filtrage par jour)
+  charge_dt <- readRDS(input_load_day_state_rds)
+  setDT(charge_dt)
+  
+  # Traitement par chunks
+  for (start in seq(1, length(non_transition_days), by = chunk_size)) {
+    days_chunk <- non_transition_days[start:min(start + chunk_size - 1, length(non_transition_days))]
+    
+    chunk_data <- charge_dt[day %in% days_chunk]
+    day_park_chunk <- day_park[day %in% days_chunk]
+    
+    # Jointure avec parc majoritaire
+    setkey(chunk_data, day)
+    setkey(day_park_chunk, day)
+    chunk_data <- chunk_data[day_park_chunk, nomatch = 0]
+    
+    # Agrégation chunk
+    agg <- chunk_data[, .(Charge = sum(Charge, na.rm = TRUE)), 
+                      by = .(x, y, day, state, parc)]
+    
+    result_day_state[[i]] <- agg
+    i <- i + 1
+    
+    rm(chunk_data, agg)
+    invisible(gc())
+  }
+  
+  # Fusion et sauvegarde du résultat global day/state/park
+  charge_park_day_state <- rbindlist(result_day_state)
+  saveRDS(charge_park_day_state, output_park_day_state_rds)
+  
+  # Étape 2 : parc + état
+  charge_park_state <- charge_park_day_state[, .(Charge = sum(Charge, na.rm = TRUE)), 
+                                             by = .(x, y, parc, state)]
+  saveRDS(charge_park_state, output_park_state_rds)
+  
+  # Étape 3 : parc seul
+  charge_park <- charge_park_state[, .(Charge = sum(Charge, na.rm = TRUE)), 
+                                   by = .(x, y, parc)]
+  saveRDS(charge_park, output_park_rds)
+  
+  message("Agrégations par chunks terminées ✅\n",
+          "   - jour/état/park : ", output_park_day_state_rds, "\n",
+          "   - état/park      : ", output_park_state_rds, "\n",
+          "   - park           : ", output_park_rds)
+  
+  invisible(list(
+    park_day_state = output_park_day_state_rds,
+    park_state     = output_park_state_rds,
+    park           = output_park_rds
   ))
 }
