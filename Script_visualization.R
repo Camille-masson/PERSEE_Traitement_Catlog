@@ -9,10 +9,10 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
+YEAR <- 2024
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
 alpage <- "Cayolle"
-alpages <- c("Sanguiniere","Cayolle")
+alpages <- c("Sanguiniere","Cayolle","Viso")
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -100,7 +100,7 @@ if (FALSE) {
   park_tot_filterd_rds   <- file.path(case_flock_alpage_file, paste0("by_park_transition_filtered_", YEAR,"_",alpage,".rds"))
   
   
-  
+  readRDS(park_tot_filterd_rds)
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
   case_UP_file = file.path(raster_dir, "UP")
   # Un .SHP avec les Unités pastorales UP
@@ -179,7 +179,7 @@ if (FALSE) {
   
   
   #Indicateur : Charge par parc
-  if (TRUE){
+  if (FALSE){
     park_total_flock_load_tif(
       park_rds    = park_tot_rds,
       output_dir  = output_case_alpage,
@@ -189,7 +189,7 @@ if (FALSE) {
     )
   }
   
-  if (TRUE){
+  if (FALSE){
   
   #Indicateur : Charge par parc et état
   park_state_flock_load_tif(park_state_rds,
@@ -211,7 +211,7 @@ if (FALSE) {
     )
   }
   
-  if (TRUE){
+  if (FALSE){
     
     #Indicateur : Charge par parc et état filtered
     park_state_flock_load_tif_filtered(park_state_filtered_rds ,
@@ -1169,3 +1169,88 @@ if (FALSE){
   
   cat("Raster de la date du NDVI max exporté sous :", pheno_raster, "\n")
   
+}
+
+
+
+
+
+
+#### 11. PLOT DE MERDE ####
+#-------------------------#
+
+# install.packages(c("ggplot2","dplyr","tibble"))
+library(ggplot2)
+library(dplyr)
+library(tibble)
+
+# 1) Ordres souhaités
+rings      <- c("Zone de plaine","Zone de montagne")
+categories <- c(
+  "Bovins Laitier", "Bovins Viande", "Ovins et Caprins",
+  "Porcins", "Mixte", "Cultures"
+)
+
+# 2) Préparation du data.frame
+df <- tribble(
+  ~category,            ~percent, ~ring,
+  "Bovins Laitier",     10,       "Zone de plaine",
+  "Bovins Viande",      12,       "Zone de plaine",
+  "Ovins et Caprins",    6,       "Zone de plaine",
+  "Porcins",             6,       "Zone de plaine",
+  "Mixte",              17,       "Zone de plaine",
+  "Cultures",           49,       "Zone de plaine",
+  "Bovins Laitier",     16,       "Zone de montagne",
+  "Bovins Viande",      24,       "Zone de montagne",
+  "Ovins et Caprins",   14,       "Zone de montagne",
+  "Porcins",             4,       "Zone de montagne",
+  "Mixte",              18,       "Zone de montagne",
+  "Cultures",           24,       "Zone de montagne"
+) %>%
+  mutate(
+    ring     = factor(ring, levels = rings),
+    category = factor(category, levels = categories),
+    x        = as.numeric(ring)           # x=1 pour plaine, x=2 pour montagne
+  )
+
+# 3) Palette extraite de ta diapo
+cols <- c(
+  "Bovins Laitier"    = "#7DAFDB",
+  "Bovins Viande"     = "#D15F59",
+  "Ovins et Caprins"  = "#B9A3D5",
+  "Porcins"           = "#EEDD99",
+  "Mixte"             = "#9CC3A8",
+  "Cultures"          = "#CFA16A"
+)
+
+# 4) Construction du donut
+ggplot(df, aes(x = x, y = percent, fill = category)) +
+  geom_col(width = 1, color = "black") +
+  coord_polar(theta = "y") +
+  # limite extérieure x = 2.5 et intérieure x = 0.5 pour créer le trou
+  scale_x_continuous(limits = c(0.5, max(df$x) + 0.5), expand = c(0, 0)) +
+  scale_fill_manual(values = cols) +
+  theme_void() +
+  theme(legend.position = "right") +
+  labs(fill = "Catégorie")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
