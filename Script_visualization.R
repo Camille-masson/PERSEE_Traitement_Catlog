@@ -9,7 +9,8 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2024
+YEAR <- 2022
+YEARS <- c(2022, 2023, 2024)
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
 alpage <- "Cayolle"
 alpages <- c("Sanguiniere","Cayolle","Viso")
@@ -75,7 +76,7 @@ if (FALSE) {
   library(sf)
   library(ggplot2)
   source(file.path(functions_dir, "Functions_Indicateurs.R"))
-  
+  for (YEAR in YEARS){
   for(alpage in alpages){
   # ENTREE
   #Dossier contenant les sous dossier des chargement
@@ -223,7 +224,7 @@ if (FALSE) {
   
   
   
-   
+  }
   
   
   }
@@ -477,13 +478,15 @@ if (FALSE){
   library(viridis)
   library(ggplot2)
   source(file.path(functions_dir, "Functions_Indicateurs.R"))
-  
+  for(YEAR in YEARS){
   for (alpage in alpages){
   # ENTREES
   # Dossier contenant les fichiers du comportement
   case_state_file = file.path(output_dir, "3. HMM_comportement")
-  # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
+  # Un .RDS contenant les trajectoires 
   state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
+  # Un .RDS contenant les trajectoires par PARC
+  viterbi_parc_rds <- file.path(case_state_file, paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds"))
   
   
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
@@ -511,6 +514,7 @@ if (FALSE){
   # Un .shp contenant les données de trajectoires catégorisées par comportement et collier
   output_polygon_use_shp = file.path(output_polygon_case, paste0("Use_polygon_",YEAR,"_",alpage,".shp"))
   
+  output_shp <- file.path(output_polygon_case, paste0("Use_polygon_parc_", YEAR, "_", alpage, ".shp"))
   
   # CODE 
   # Ancienne fonction
@@ -520,12 +524,41 @@ if (FALSE){
     # Ajustez pour être plus ou moins restrictif
   }
   
-  if(TRUE){
+  if(FALSE){
     generate_presence_polygons_by_percentage(state_rds_file, output_polygon_use_shp, YEAR, alpage, percentage = 0.85 ,n_grid = 200,small_poly_threshold_percent = 0.05 ,crs = 2154 )
     
     
   }
     
+  
+  
+  if (TRUE){
+    
+    generate_presence_polygons_by_parc(
+    state_rds_file,
+    viterbi_parc_rds,
+    output_shp,
+    YEAR,
+    alpage,
+    percentage                  = 0.85,
+    n_grid                      = 200,
+    small_poly_threshold_percent = 0.05,
+    crs                         = 2154
+  )
+  }
+  }
+  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
     
   if (FALSE){
     generate_presence_polygons_by_percentage_per_month(state_rds_file, output_polygon_use_shp, YEAR, alpage, percentage = 0.85 ,n_grid = 200,small_poly_threshold_percent = 0.05 ,crs = 2154 )  

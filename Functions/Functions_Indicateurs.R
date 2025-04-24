@@ -875,6 +875,123 @@ generate_presence_polygons_by_percentage_per_month <- function(state_rds_file, o
 
 
 
+
+
+
+
+
+
+
+
+
+generate_presence_polygons_by_parc <- function(
+    state_rds_file,
+    viterbi_parc_rds_file,
+    output_polygon_use_shp,
+    YEAR,
+    alpage,
+    percentage      = 0.85,
+    n_grid          = 200,
+    small_poly_threshold_percent = 0.05,
+    crs
+) {
+  # Librairies
+  library(sf)
+  library(data.table)
+  library(MASS)
+  
+  # 1) Chargement des trajectoires de comportement (pour l’alpage)
+  data_state <- readRDS(state_rds_file)
+  data_state <- as.data.table(data_state)[alpage == alpage]
+  
+  # 2) Chargement de la partition en parcs (Viterbi) et filtrage des jours de transition
+  viterbi_parc <- as.data.table(readRDS(viterbi_parc_rds_file))
+  viterbi_parc <- viterbi_parc[
+    alpage == alpage & jour_de_transition == FALSE,
+    .(time, x, y, parc)
+  ]
+  
+  # 3) On se base sur ces points Viterbi pour générer l’enveloppe par parc
+  data_pts <- viterbi_parc
+  
+  # 4) Initialisation du stockage
+  liste_sf <- list()
+  
+  # 5) Pour chaque parc détecté
+  for (p in unique(data_pts$parc)) {
+    sub_data <- data_pts[parc == p]
+    if (nrow(sub_data) < 3) next  # trop peu de points pour KDE
+    
+    # 6) KDE sur la grille
+    kd <- kde2d(x = sub_data$x, y = sub_data$y, n = n_grid)
+    
+    # 7) Seuil de densité couvrant 'percentage' de la masse
+    zvals   <- as.vector(kd$z)
+    sorted  <- sort(zvals, decreasing = TRUE)
+    idx     <- which(cumsum(sorted) >= percentage * sum(zvals))[1]
+    dens_th <- sorted[idx]
+    
+    # 8) Extraction des contours au seuil
+    contours <- contourLines(kd$x, kd$y, kd$z, levels = dens_th)
+    if (length(contours) == 0) next
+    
+    # 9) Conversion en polygones fermés
+    polys <- lapply(contours, function(cc) {
+      coords <- cbind(cc$x, cc$y)
+      if (!all(coords[1,] == coords[nrow(coords),])) {
+        coords <- rbind(coords, coords[1,])
+      }
+      pg <- st_polygon(list(coords))
+      if (st_area(pg) == 0) return(NULL)
+      pg
+    })
+    polys <- Filter(Negate(is.null), polys)
+    if (length(polys) == 0) next
+    
+    # 10) Assemblage et filtrage des petits polygones
+    sfc       <- st_sfc(polys, crs = crs)
+    union     <- st_cast(st_union(sfc), "POLYGON")
+    areas     <- st_area(union)
+    keep      <- areas >= small_poly_threshold_percent * max(areas)
+    filtered  <- union[keep]
+    if (length(filtered) == 0) next
+    
+    # 11) Fusion finale et mise en sf
+    final_mpoly <- st_union(filtered)
+    sf_out <- st_sf(
+      parc     = p,
+      geometry = final_mpoly,
+      crs      = crs
+    )
+    
+    liste_sf[[as.character(p)]] <- sf_out
+  }
+  
+  # 12) Combinaison et écriture
+  if (length(liste_sf) == 0) {
+    message("Aucun polygone généré pour ", alpage)
+    return(NULL)
+  }
+  all_parc_polys <- do.call(rbind, liste_sf)
+  st_write(all_parc_polys, output_polygon_use_shp, delete_dsn = TRUE)
+  message("Polygones par parc exportés vers ", output_polygon_use_shp)
+  
+  invisible(all_parc_polys)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 generate_new_grazed_area <- function(daily_rds_prefix, output_new_grazed_area_rds, output_new_grazed_area_tif, threshold) {
   # Chargement des librairies nécessaires
   library(dplyr)
