@@ -1067,8 +1067,7 @@ compute_charge_by_park_no_transition_chunked <- function(
 
 
 #FONCTION ETABLIE LES DATE POUR CHAQUE PARC
-
-use_date_parc <- function(input_parc_rds_file,output_table_use_parc){
+use_date_parc <- function(input_parc_rds_file, output_table_use_parc){
   # Chargement des librairies
   library(data.table)
   library(lubridate)
@@ -1121,9 +1120,9 @@ use_date_parc <- function(input_parc_rds_file,output_table_use_parc){
     nom_mois <- function(m) tolower(format(ISOdate(2000,m,1), "%B"))
     
     lbl_d <- if (j1 <= 15) paste0("début ", nom_mois(m1)) else paste0("mi-", nom_mois(m1))
-    lbl_f <- if (j2 >= (lm2 - 2)) paste0("fin ", nom_mois(m2))
-    else if (j2 >= 15) paste0("mi-", nom_mois(m2))
-    else paste0("début ", nom_mois(m2))
+    lbl_f <- if (j2 >= (lm2 - 2))       paste0("fin ", nom_mois(m2))
+    else if (j2 >= 15)        paste0("mi-", nom_mois(m2))
+    else                      paste0("début ", nom_mois(m2))
     
     paste(lbl_d, "à", lbl_f)
   }
@@ -1138,22 +1137,16 @@ use_date_parc <- function(input_parc_rds_file,output_table_use_parc){
     période    = label_quartier(date_arrivee, date_depart)
   )]
   
-  # 9) Création de la colonne 'rename' sans le numéro du parc, mais avec dates
+  # 9) Création de la colonne 'rename' sur base de 'période'
   final_table[
     , rename := paste0(
       "parc_",
-      format(date_debut, "%Y-%m-%d"), "_",
-      format(date_fin,   "%Y-%m-%d")
+      gsub(" ", "-", gsub(" à ", "_", période))
     )
   ]
   
-  write_rds(final_table,output_table_use_parc)
-
-  
-  
-  
-
-  
+  # 10) Sauvegarde
+  saveRDS(final_table, output_table_use_parc)
 }
 
 

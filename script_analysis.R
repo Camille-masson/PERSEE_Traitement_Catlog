@@ -868,7 +868,7 @@ if (TRUE){
       use_date_parc(input_parc_rds_file,output_table_use_parc)
       
      
-      
+      readRDS(output_table_use_parc)
       # PARTIE 2.B
       
       # ENTREE
@@ -909,7 +909,7 @@ if (TRUE){
       )
       
       #CODE
-      # Exemple d’appel :
+      
       rename_parc_in_loads(
         input_table_use_parc = input_table_use_parc,
         input_park_day_state  = input_park_day_state_transition_filtered_rds,
@@ -921,7 +921,7 @@ if (TRUE){
       )
       
         
-        
+        readRDS(output_park_transition_filtered_rds)
         
         
       }
