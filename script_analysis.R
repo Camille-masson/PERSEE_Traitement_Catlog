@@ -428,6 +428,106 @@ if (TRUE) {
   
   
   
+  
+  
+  source(file.path(functions_dir, "Functions_flock_density.R"))
+  source(file.path(functions_dir, "Functions_HMM_fitting.R"))
+  for (YEAR in YEARS){
+    for(alpage in alpages){
+      # PARTIE 2.A
+      # ENTREE
+      # Dossier contenant les fichiers du comportement
+      case_state_file = file.path(output_dir, "3. HMM_comportement")
+      input_parc_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+      
+      
+      # SORTIE
+      case = file.path(output_dir, "4. Chargements_calcules")
+      load_case = file.path(case, paste0(YEAR, "_", alpage))
+      #Un .RDS avec les date d'utilisation de chaque parc 
+      output_table_use_parc = file.path(load_case, paste0("info_table_use_parc_", YEAR, "_", alpage, ".rds"))
+      
+      
+      # CODE 
+      use_date_parc(input_parc_rds_file,output_table_use_parc)
+      
+      # PARTIE 2.B
+      
+      # ENTREE
+      case_state_dir      <- file.path(output_dir, "3. HMM_comportement")
+      case = file.path(output_dir, "4. Chargements_calcules")
+      load_case = file.path(case, paste0(YEAR, "_", alpage))
+      
+      #Un .RDS avec les date d'utilisation de chaque parc 
+      input_table_use_parc = file.path(load_case, paste0("info_table_use_parc_", YEAR, "_", alpage, ".rds"))
+      readRDS(input_table_use_parc)
+      
+      
+      input_parc_rds_file <- file.path(
+        case_state_dir,
+        paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds")
+      )
+      
+      
+      # SORTIE
+      output_parc_rds_file_renamme <- file.path(
+        case_state_dir,
+        paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc_renamme.rds")
+      )
+      
+      
+      #CODE
+      rename_viterbi_parc(input_parc_rds_file,
+                          input_table_use_parc,
+                          output_parc_rds_file_renamme)
+      
+    }
+  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   # ENTREE
   case_state_dir      <- file.path(output_dir, "3. HMM_comportement")
   input_parc_rds_file <- file.path(

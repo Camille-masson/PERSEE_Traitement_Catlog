@@ -1061,7 +1061,37 @@ traj_by_night_park_count <- function(state_rds_file,
 
 
 
-
+rename_viterbi_parc <- function(
+    input_parc_rds_file,
+    input_table_use_parc_file,
+    output_parc_rds_file_renamme
+) {
+  library(data.table)
+  
+  # 1) Charger le mapping (info_table_use_parc) et vérifier les colonnes
+  map_dt <- as.data.table(readRDS(input_table_use_parc_file))
+  if (!all(c("parc", "rename") %in% names(map_dt))) {
+    stop("Le RDS de mapping doit contenir les colonnes 'parc' et 'rename'")
+  }
+  
+  # 2) Construire un vecteur nommé pour la correspondance
+  vect_map <- setNames(map_dt$rename, map_dt$parc)
+  
+  # 3) Charger les données viterbi_parc
+  parc_dt <- as.data.table(readRDS(input_parc_rds_file))
+  
+  # 4) Appliquer le renommage
+  parc_dt[, parc := vect_map[as.character(parc)] ]
+  
+  # 5) Vérifier si certains parcs n’ont pas été renommés
+  if (any(is.na(parc_dt$parc))) {
+    warning("Certain·e·s parc n’ont pas de correspondance dans le mapping")
+  }
+  
+  # 6) Enregistrer le RDS renommé
+  saveRDS(parc_dt, output_parc_rds_file_renamme)
+  message("Fichier viterbi_parc renommé et sauvegardé :\n  ", output_parc_rds_file_renamme)
+}
 
 
 
