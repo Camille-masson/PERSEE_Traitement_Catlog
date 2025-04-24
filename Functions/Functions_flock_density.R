@@ -1152,11 +1152,87 @@ use_date_parc <- function(input_parc_rds_file, output_table_use_parc){
 
 
 
+#V2
 
-
-
-
-
+use_date_parc <- function(input_parc_rds_file, output_table_use_parc){
+  # Chargement des librairies
+  library(data.table)
+  library(lubridate)
+  
+  # 1) Lecture du RDS
+  dt <- as.data.table(readRDS(input_parc_rds_file))
+  
+  # 2) Extraction de la date
+  dt[, date := as.Date(time)]
+  
+  # 3) Tri par alpage, parc et date
+  setorder(dt, alpage, parc, date)
+  
+  # 4) Calcul des écarts en jours et découpage en périodes
+  dt[
+    , diff_jours := as.integer(date - data.table::shift(date)), 
+    by = .(alpage, parc)
+  ][
+    , periode_id := 1 + cumsum(diff_jours > 5 | is.na(diff_jours)), 
+    by = .(alpage, parc)
+  ]
+  
+  # 5) Construction du tableau des périodes (toutes durées conservées)
+  periodes <- dt[
+    , .(
+      date_arrivee = min(date),
+      date_depart  = max(date),
+      duree        = as.integer(max(date) - min(date)) + 1L
+    ),
+    by = .(alpage, parc, periode_id)
+  ]
+  
+  # 6) Sélection de la période la plus longue par alpage + parc
+  best <- periodes[
+    , .SD[which.max(duree)], 
+    by = .(alpage, parc)
+  ]
+  
+  # 7) Fonction de libellé “quartier” arrondi aux quinzaines
+  label_quartier_scalar <- function(d1, d2) {
+    dur <- as.integer(d2 - d1) + 1L
+    if (dur <= 7L) {
+      return(paste0(format(d1, "%d %b"), " à ", format(d2, "%d %b")))
+    }
+    m1 <- month(d1); m2 <- month(d2)
+    j1 <- day(d1);   j2 <- day(d2)
+    lm2 <- days_in_month(d2)
+    nom_mois <- function(m) tolower(format(ISOdate(2000,m,1), "%B"))
+    
+    lbl_d <- if (j1 <= 15) paste0("début ", nom_mois(m1)) else paste0("mi-", nom_mois(m1))
+    lbl_f <- if (j2 >= (lm2 - 2))       paste0("fin ", nom_mois(m2))
+    else if (j2 >= 15)        paste0("mi-", nom_mois(m2))
+    else                      paste0("début ", nom_mois(m2))
+    
+    paste(lbl_d, "à", lbl_f)
+  }
+  label_quartier <- Vectorize(label_quartier_scalar, c("d1","d2"))
+  
+  # 8) Construction du tableau final
+  final_table <- best[, .(
+    alpage,
+    parc,
+    date_debut = date_arrivee,
+    date_fin   = date_depart,
+    période    = label_quartier(date_arrivee, date_depart)
+  )]
+  
+  # 9) Création de la colonne 'rename' sur base de 'période'
+  final_table[
+    , rename := paste0(
+      "parc_",
+      gsub(" ", "-", gsub(" à ", "_", période))
+    )
+  ]
+  
+  # 10) Sauvegarde
+  saveRDS(final_table, output_table_use_parc)
+}
 
 
 

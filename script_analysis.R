@@ -7,7 +7,8 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 2022
+YEAR = 2023
+YEARS = c(2023,2024)
 alpage = "Sanguiniere"
 alpages = c("Sanguiniere","Viso","Cayolle")
 
@@ -846,6 +847,8 @@ if (TRUE){
       }
         
       # PARTIE 2 : Attrubution des noms de parc corretce
+      source(file.path(functions_dir, "Functions_flock_density.R"))
+      for (YEAR in YEARS){
       for(alpage in alpages){
       # PARTIE 2.A
       # ENTREE
@@ -863,7 +866,6 @@ if (TRUE){
       
       # CODE 
       use_date_parc(input_parc_rds_file,output_table_use_parc)
-      
       
       # PARTIE 2.B
       
@@ -923,7 +925,7 @@ if (TRUE){
       }
       
       
-      
+      }
       
     }
       
