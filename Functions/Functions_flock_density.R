@@ -1002,3 +1002,227 @@ compute_charge_by_park_no_transition_chunked <- function(
     park           = output_park_rds
   ))
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#FONCTION ETABLIE LES DATE POUR CHAQUE PARC
+
+use_date_parc <- function(input_parc_rds_file,output_table_use_parc){
+  # Chargement des librairies
+  library(data.table)
+  library(lubridate)
+  
+  # 1) Lecture du RDS
+  dt <- as.data.table(readRDS(input_parc_rds_file))
+  
+  # 2) Extraction de la date
+  dt[, date := as.Date(time)]
+  
+  # 3) Tri par alpage, parc et date
+  setorder(dt, alpage, parc, date)
+  
+  # 4) Calcul des écarts en jours et découpage en périodes
+  dt[
+    , diff_jours := as.integer(date - shift(date)), 
+    by = .(alpage, parc)
+  ][
+    , periode_id := 1 + cumsum(diff_jours > 5 | is.na(diff_jours)), 
+    by = .(alpage, parc)
+  ]
+  
+  # 5) Construction du tableau des périodes ≥ 4 jours
+  periodes <- dt[
+    , .(
+      date_arrivee = min(date),
+      date_depart  = max(date),
+      duree        = as.integer(max(date) - min(date)) + 1L
+    ),
+    by = .(alpage, parc, periode_id)
+  ][
+    duree >= 4
+  ]
+  
+  # 6) Sélection de la période la plus longue par alpage + parc
+  best <- periodes[
+    , .SD[which.max(duree)], 
+    by = .(alpage, parc)
+  ]
+  
+  # 7) Fonction de libellé “quartier” arrondi aux quinzaines
+  label_quartier_scalar <- function(d1, d2) {
+    dur <- as.integer(d2 - d1) + 1L
+    if (dur <= 7L) {
+      return(paste0(format(d1, "%d %b"), " à ", format(d2, "%d %b")))
+    }
+    m1 <- month(d1); m2 <- month(d2)
+    j1 <- day(d1);   j2 <- day(d2)
+    lm2 <- days_in_month(d2)
+    nom_mois <- function(m) tolower(format(ISOdate(2000,m,1), "%B"))
+    
+    lbl_d <- if (j1 <= 15) paste0("début ", nom_mois(m1)) else paste0("mi-", nom_mois(m1))
+    lbl_f <- if (j2 >= (lm2 - 2)) paste0("fin ", nom_mois(m2))
+    else if (j2 >= 15) paste0("mi-", nom_mois(m2))
+    else paste0("début ", nom_mois(m2))
+    
+    paste(lbl_d, "à", lbl_f)
+  }
+  label_quartier <- Vectorize(label_quartier_scalar, c("d1","d2"))
+  
+  # 8) Construction du tableau final
+  final_table <- best[, .(
+    alpage,
+    parc,
+    date_debut = date_arrivee,
+    date_fin   = date_depart,
+    période    = label_quartier(date_arrivee, date_depart)
+  )]
+  
+  # 9) Création de la colonne 'rename' sans le numéro du parc, mais avec dates
+  final_table[
+    , rename := paste0(
+      "parc_",
+      format(date_debut, "%Y-%m-%d"), "_",
+      format(date_fin,   "%Y-%m-%d")
+    )
+  ]
+  
+  write_rds(final_table,output_table_use_parc)
+
+  
+  
+  
+
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# RNOMME DANS LES TAUX DE CHARGEMENT AVEC LE BON NOM DE PARC 
+
+rename_parc_in_loads <- function(
+    input_table_use_parc,
+    input_park_day_state,
+    input_park_state,
+    input_park,
+    output_park_day_state,
+    output_park_state,
+    output_park
+) {
+  library(data.table)
+  
+  # 1) Lire la table d’info sur chaque parc (= une ligne par parc avec sa colonne 'rename')
+  info <- readRDS(input_table_use_parc)
+  setDT(info)
+  if (!all(c("parc", "rename") %in% names(info))) {
+    stop("Le RDS info_table_use_parc doit contenir les colonnes 'parc' et 'rename'")
+  }
+  
+  # 2) Construire un vecteur de mapping nommé
+  mapping <- setNames(info$rename, info$parc)
+  
+  # 3) Fonction interne pour renommer et sauvegarder
+  process_and_save <- function(in_rds, out_rds) {
+    dt <- readRDS(in_rds)
+    setDT(dt)
+    if (!"parc" %in% names(dt)) {
+      stop(sprintf("Le fichier %s n’a pas de colonne 'parc'", in_rds))
+    }
+    # Appliquer le mapping
+    dt[, parc := mapping[as.character(parc)] ]
+    # Vérifier que toutes les valeurs ont été renommées
+    if (any(is.na(dt$parc))) {
+      warning("Certain·e·s parc n’ont pas de correspondance dans info_table_use_parc")
+    }
+    # Sauvegarder
+    saveRDS(dt, out_rds)
+    message("-> Fichier renommé et sauvegardé : ", out_rds)
+    invisible(NULL)
+  }
+  
+  # 4) Traiter les trois jeux de données
+  process_and_save(input_park_day_state, output_park_day_state)
+  process_and_save(input_park_state,     output_park_state)
+  process_and_save(input_park,           output_park)
+  
+  invisible(TRUE)
+}
+
+

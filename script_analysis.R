@@ -7,9 +7,9 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 2023
-alpage = "Viso"
-alpages = "Viso"
+YEAR = 2024
+alpage = "Sanguiniere"
+alpages = "Cayolle"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -424,6 +424,104 @@ if (TRUE) {
       )
     }
   }
+  
+  
+  
+  # ENTREE
+  case_state_dir      <- file.path(output_dir, "3. HMM_comportement")
+  input_parc_rds_file <- file.path(
+    case_state_dir,
+    paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds"))
+  
+  
+  readRDS(input_parc_rds_file)
+  
+  
+  
+  # Chargement des librairies
+  library(data.table)
+  library(lubridate)
+  
+  # 1) Lecture du RDS
+  dt <- as.data.table(readRDS(input_parc_rds_file))
+  
+  # 2) Extraction de la date
+  dt[, date := as.Date(time)]
+  
+  # 3) Tri par alpage, parc et date
+  setorder(dt, alpage, parc, date)
+  
+  # 4) Calcul des écarts en jours et découpage en périodes
+  dt[
+    , diff_jours := as.integer(date - shift(date)), 
+    by = .(alpage, parc)
+  ][
+    , periode_id := 1 + cumsum(diff_jours > 5 | is.na(diff_jours)), 
+    by = .(alpage, parc)
+  ]
+  
+  # 5) Construction du tableau des périodes ≥ 4 jours
+  periodes <- dt[
+    , .(
+      date_arrivee = min(date),
+      date_depart  = max(date),
+      duree        = as.integer(max(date) - min(date)) + 1L
+    ),
+    by = .(alpage, parc, periode_id)
+  ][
+    duree >= 4
+  ]
+  
+  # 6) Sélection de la période la plus longue par alpage + parc
+  best <- periodes[
+    , .SD[which.max(duree)], 
+    by = .(alpage, parc)
+  ]
+  
+  # 7) Fonction de libellé “quartier” arrondi aux quinzaines
+  label_quartier_scalar <- function(d1, d2) {
+    dur <- as.integer(d2 - d1) + 1L
+    if (dur <= 7L) {
+      return(paste0(format(d1, "%d %b"), " à ", format(d2, "%d %b")))
+    }
+    m1 <- month(d1); m2 <- month(d2)
+    j1 <- day(d1);   j2 <- day(d2)
+    lm2 <- days_in_month(d2)
+    nom_mois <- function(m) tolower(format(ISOdate(2000,m,1), "%B"))
+    
+    lbl_d <- if (j1 <= 15) paste0("début ", nom_mois(m1)) else paste0("mi-", nom_mois(m1))
+    lbl_f <- if (j2 >= (lm2 - 2)) paste0("fin ", nom_mois(m2))
+    else if (j2 >= 15) paste0("mi-", nom_mois(m2))
+    else paste0("début ", nom_mois(m2))
+    
+    paste(lbl_d, "à", lbl_f)
+  }
+  label_quartier <- Vectorize(label_quartier_scalar, c("d1","d2"))
+  
+  # 8) Construction du tableau final
+  final_table <- best[, .(
+    alpage,
+    parc,
+    date_debut = date_arrivee,
+    date_fin   = date_depart,
+    période    = label_quartier(date_arrivee, date_depart)
+  )]
+  
+  # 9) Création de la colonne 'rename' sans le numéro du parc, mais avec dates
+  final_table[
+    , rename := paste0(
+      "parc_",
+      format(date_debut, "%Y-%m-%d"), "_",
+      format(date_fin,   "%Y-%m-%d")
+    )
+  ]
+  
+  # 10) Affichage ou export
+  print(final_table)
+  # fwrite(final_table, "résumé_périodes_par_parc.csv")
+  
+  
+  
 }
 
   
@@ -530,7 +628,7 @@ for (alpage in alpages) {
 
 
 
-
+# A mettre dans visu !
 
 
 
@@ -672,14 +770,14 @@ if (TRUE){
     
     rm(charge)
     
+  }  
     
     
-    
-    
+}
     ### 4.1 Extensions avec le recalcule du chargement avec la notion de parc ###
     ###-----------------------------------------------------------------------###
     if (TRUE){
-      
+      # PARTIE 1 : recalcule par parc de nuit
       for (alpage in alpages){
         # ENTREE
         # Dossier
@@ -753,7 +851,75 @@ if (TRUE){
         
       }
         
-        
+      # PARTIE 2 : Attrubution des noms de parc corretce
+      # PARTIE 2.A
+      # ENTREE
+      # Dossier contenant les fichiers du comportement
+      case_state_file = file.path(output_dir, "3. HMM_comportement")
+      input_parc_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
+      
+     
+      # SORTIE
+      #Un .RDS avec les date d'utilisation de chaque parc 
+      output_table_use_parc = file.path(load_case, paste0("info_table_use_parc", YEAR, "_", alpage, ".rds"))
+      
+      
+      # CODE 
+      use_date_parc(input_parc_rds_file,output_table_use_parc)
+      
+     
+      
+      # PARTIE 2.B
+      
+      # ENTREE
+      case = file.path(output_dir, "4. Chargements_calcules")
+      load_case = file.path(case, paste0(YEAR, "_", alpage))
+      
+      #Un .RDS avec les date d'utilisation de chaque parc 
+      input_table_use_parc = file.path(load_case, paste0("info_table_use_parc", YEAR, "_", alpage, ".rds"))
+      
+      # Un .RDS avce les parc
+      input_park_day_state_transition_filtered_rds <- file.path(
+        load_case,
+        paste0("by_park_day_and_state_transition_filtered_", YEAR, "_", alpage, ".rds")
+      )
+      input_park_state_transition_filtered_rds     <- file.path(
+        load_case,
+        paste0("by_park_and_state_transition_filtered_", YEAR, "_", alpage, ".rds")
+      )
+      input_park_transition_filtered_rds           <- file.path(
+        load_case,
+        paste0("by_park_transition_filtered_", YEAR, "_", alpage, ".rds")
+      )
+      
+      # SORTIE
+      
+      # Un .RDS avce les parc renommé
+      output_park_day_state_transition_filtered_rds <- file.path(
+        load_case,
+        paste0("by_park_day_and_state_transition_filtered_", YEAR, "_", alpage, ".rds")
+      )
+      output_park_state_transition_filtered_rds     <- file.path(
+        load_case,
+        paste0("by_park_and_state_transition_filtered_", YEAR, "_", alpage, ".rds")
+      )
+      output_park_transition_filtered_rds           <- file.path(
+        load_case,
+        paste0("by_park_transition_filtered_", YEAR, "_", alpage, ".rds")
+      )
+      
+      #CODE
+      # Exemple d’appel :
+      rename_parc_in_loads(
+        input_table_use_parc = input_table_use_parc,
+        input_park_day_state  = input_park_day_state_transition_filtered_rds,
+        input_park_state      = input_park_state_transition_filtered_rds,
+        input_park            = input_park_transition_filtered_rds,
+        output_park_day_state = output_park_day_state_transition_filtered_rds,
+        output_park_state     = output_park_state_transition_filtered_rds,
+        output_park           = output_park_transition_filtered_rds
+      )
+      
         
         
         
@@ -773,20 +939,7 @@ if (TRUE){
       
       
       
-      
-      
-      
-    # By state and park 
-    
-    
-    # Un .RDS des données 
-    input_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
-    
-    
-    
-    
-    
-    }
+
     
     
     
@@ -798,151 +951,35 @@ if (TRUE){
     
     
     
-    
-    
-  }
   
   
   
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### 4.1 FLOCK STOCKING RATE (charge) BY PARC AND BY STATE ####
-#-------------------------------------------------------------#
-if (TRUE){
   
-  ## DESCRIPTION ##
-  # Calcul du taux de chargement selon la méthode "BBMM"
-  
-  # Nécessite :
-  # - .csv : "AAAA_infos_alpages.csv"
-  # - fichier .rds contenant les données par comportement : "Catlog_AAAA_alpage_demo_viterbi.rds"
-  
-  # En sortie :
-  # - Un fichier .rds avec le chargement par jour et par comportement :
-  #   outputs/4. Chargements_calcules/by_day_and_state_AAAA_alpage_demo
-  # - Un fichier .rds avec le chargement par jour :
-  #   outputs/4. Chargements_calcules/by_day_AAAA_alpage_demo
-  # - Un fichier .rds avec le chargement par comportement :
-  #   outputs/4. Chargements_calcules/by_state_AAAA_alpage_demo
-  # - Un fichier .rds avec le chargement total :
-  #   outputs/4. Chargements_calcules/total_AAAA_alpage_demo
-  
-  
-  ## LIBRARY ##
-  library(adehabitatHR)
-  library(data.table)
-  library(snow)
-  source(file.path(functions_dir, "Functions_map_plot.R"))
-  source(file.path(functions_dir, "Functions_flock_density.R"))
-  
-  ## ENTREES ##
-  # Un .RDS contenant les trajectoires catégorisées par comportement
-  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
-  
-  input_parc_rds_file <- file.path(output_dir, "3. HMM_comportement",  paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds"))
-  
-  # Un .csv  "infos_alpages" remplis selon le model du jeu démo
-  AIF <- file.path(raw_data_dir, paste0(YEAR,"_infos_alpages.csv"))
-  check_and_correct_csv(csv_path = AIF)
-  
-  # Un data.frame contenant les tailles de troupeaux et les évolutions des tailles en fonction de la date
-  raw_data_dir <- file.path(data_dir, paste0("Colliers_", YEAR, "_brutes"))
-  flock_size_file <- file.path(raw_data_dir, paste0(YEAR, "_tailles_troupeaux.csv"))
-  check_and_correct_csv(csv_path = flock_size_file)
-  #str(read.csv(flock_size_file, stringsAsFactors = FALSE, encoding = "UTF-8"))
-  
-  
-  ## SORTIES ##
-  # Dossier de sortie
-  save_dir <- file.path(output_dir, "4. Chargements_calcules")
-  alpage_case <- file.path(save_dir, paste0 (YEAR,"_",alpage))
-  
-  # Un .RDS par alpage contenant les charges journalières par comportement
-  state_daily_rds_prefix <- paste0("by_day_and_state_", YEAR, "_")
-  # Un .RDS par alpage contenant les charges journalières
-  daily_rds_prefix <- paste0("by_day_", YEAR, "_")
-  # Un .RDS par alpage contenant les charges par comportement
-  state_rds_prefix <- paste0("by_state_", YEAR, "_")
-  # Un .RDS par alpage contenant la charge totale sur toute la saison
-  total_rds_prefix <- paste0("total_", YEAR, "_")
-  
-  state_parc_prefix   <- paste0("by_parc_and_state_", YEAR, "_")
 
-  
-  
-  
-  # 1) Charger les données 
-  data_parc <- readRDS(input_parc_rds_file)
-  flock_size_fixed <- get_flock_size_through_time(alpage, flock_size_file)
-  prop_time_collar_on <- get_alpage_info(alpage, AIF, "proportion_jour_allume")
-  
-  
-  # 3) Appel de la fonction
-  all_parc_files <- flock_load_by_parc_and_state_to_rds_kernelbb_Auto_grid(
-    data                  = data_parc,
-    save_dir              = alpage_case,
-    save_rds_prefix       = paste0("by_parc_and_state_", YEAR, "_"),
-    flock_size            = flock_size_fixed,
-    prop_time_collar_on   = prop_time_collar_on
-  )
-  
-   
-  # le préfixe que vous avez donné à flock_load_by_parc_and_state…
-  state_parc_prefix <- paste0("by_parc_and_state_", YEAR, "_")
-  
-  # fusion des fichiers .rds ENFIN sur LE BON DOSSIER
-  merged_parc_file <- flock_merge_rds_files(
-    save_dir = alpage_case,      # <– ici le dossier
-    state_daily_rds_prefix = state_parc_prefix
-  )
-  
-  # puis vous pouvez relire :
-  data_bis <- readRDS(merged_parc_file)
- data_bis <- readRDS( merged_parc_file)
- 
- 
-}
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
-  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
