@@ -9,11 +9,11 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
-YEARS <- c(2022, 2023, 2024)
+YEAR <- 2024
+YEARS <- 2024
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Cayolle"
-alpages <- c("Sanguiniere","Cayolle","Viso")
+alpage <- "Viso"
+alpages <- "Viso"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -486,7 +486,7 @@ if (FALSE){
   # Un .RDS contenant les trajectoires 
   state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
   # Un .RDS contenant les trajectoires par PARC
-  viterbi_parc_rds <- file.path(case_state_file, paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc.rds"))
+  viterbi_parc_rds <- file.path(case_state_file, paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc_renamme.rds"))
   
   
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
@@ -540,7 +540,7 @@ if (FALSE){
     output_shp,
     YEAR,
     alpage,
-    percentage                  = 0.85,
+    percentage                  = 0.75,
     n_grid                      = 200,
     small_poly_threshold_percent = 0.05,
     crs                         = 2154
