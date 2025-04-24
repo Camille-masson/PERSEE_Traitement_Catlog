@@ -861,7 +861,7 @@ if (TRUE){
      
       # SORTIE
       #Un .RDS avec les date d'utilisation de chaque parc 
-      output_table_use_parc = file.path(load_case, paste0("info_table_use_parc", YEAR, "_", alpage, ".rds"))
+      output_table_use_parc = file.path(load_case, paste0("info_table_use_parc_", YEAR, "_", alpage, ".rds"))
       
       
       # CODE 
@@ -876,8 +876,8 @@ if (TRUE){
       load_case = file.path(case, paste0(YEAR, "_", alpage))
       
       #Un .RDS avec les date d'utilisation de chaque parc 
-      input_table_use_parc = file.path(load_case, paste0("info_table_use_parc", YEAR, "_", alpage, ".rds"))
-      
+      input_table_use_parc = file.path(load_case, paste0("info_table_use_parc_", YEAR, "_", alpage, ".rds"))
+      readRDS(input_table_use_parc)
       # Un .RDS avce les parc
       input_park_day_state_transition_filtered_rds <- file.path(
         load_case,
