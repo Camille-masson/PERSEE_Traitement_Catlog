@@ -7,9 +7,9 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 2024
+YEAR = 2022
 alpage = "Sanguiniere"
-alpages = "Cayolle"
+alpages = c("Sanguiniere","Viso","Cayolle")
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -522,7 +522,7 @@ if (TRUE) {
   
   
   
-}
+
 
   
   
@@ -633,13 +633,7 @@ for (alpage in alpages) {
 
 
 
-
-
-
-
-
-
-
+}
 
 #### 4. FLOCK STOCKING RATE (charge) BY DAY AND BY STATE ####
 #-------------------------------------------------------------#
@@ -852,6 +846,7 @@ if (TRUE){
       }
         
       # PARTIE 2 : Attrubution des noms de parc corretce
+      for(alpage in alpages){
       # PARTIE 2.A
       # ENTREE
       # Dossier contenant les fichiers du comportement
@@ -860,6 +855,8 @@ if (TRUE){
       
      
       # SORTIE
+      case = file.path(output_dir, "4. Chargements_calcules")
+      load_case = file.path(case, paste0(YEAR, "_", alpage))
       #Un .RDS avec les date d'utilisation de chaque parc 
       output_table_use_parc = file.path(load_case, paste0("info_table_use_parc_", YEAR, "_", alpage, ".rds"))
       
@@ -867,8 +864,7 @@ if (TRUE){
       # CODE 
       use_date_parc(input_parc_rds_file,output_table_use_parc)
       
-     
-      readRDS(output_table_use_parc)
+      
       # PARTIE 2.B
       
       # ENTREE
@@ -921,7 +917,7 @@ if (TRUE){
       )
       
         
-        readRDS(output_park_transition_filtered_rds)
+        
         
         
       }
@@ -929,7 +925,7 @@ if (TRUE){
       
       
       
-      
+    }
       
       
       
