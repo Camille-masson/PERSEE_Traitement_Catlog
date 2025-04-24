@@ -8,9 +8,9 @@ source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
 YEAR = 2023
-YEARS = c(2023,2024)
+YEARS = 2023
 alpage = "Sanguiniere"
-alpages = c("Sanguiniere","Viso","Cayolle")
+alpages = "Sanguiniere"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -407,7 +407,7 @@ if (TRUE) {
         state_rds_file       = state_rds_file,
         output_parc_rds_file = output_parc_rds_file,
         window_minutes       = 30,
-        eps_dist             = 500,
+        eps_dist             = 300,
         rare_threshold       = 5
       )
     }
@@ -425,8 +425,6 @@ if (TRUE) {
       )
     }
   }
-  
-  
   
   
   

@@ -821,13 +821,14 @@ traj_by_night_park <- function(state_rds_file,
     mutate(parc = paste0("Parc_", labs))
   
   # 5) Split morning / night
+  # 5) Split morning / night
   morning <- centroids %>% 
-    filter(phase=="morning") %>% 
-    select(ID, date, parc_m = parc)
-  night   <- centroids %>% 
-    filter(phase=="night")   %>% 
-    select(ID, date, parc_n = parc)
+    dplyr::filter(phase == "morning") %>% 
+    dplyr::select(ID, date, parc_m = parc)
   
+  night   <- centroids %>% 
+    dplyr::filter(phase == "night")   %>% 
+    dplyr::select(ID, date, parc_n = parc)
   # 6) Flag initial par ID/jour
   transitions <- inner_join(morning, night, by=c("ID","date")) %>%
     mutate(jour_de_transition = (parc_m != parc_n))
@@ -841,10 +842,10 @@ traj_by_night_park <- function(state_rds_file,
       .groups = "drop"
     ) %>%
     mutate(global = (n_trans > total/2)) %>%
-    select(date, global)
+    dplyr::select(date, global)
   
   transitions2 <- transitions %>%
-    select(ID, date) %>%
+    dplyr::select(ID, date) %>%
     left_join(summary_day, by = "date") %>%
     rename(jour_de_transition = global)
   
@@ -886,7 +887,7 @@ traj_by_night_park <- function(state_rds_file,
   
   # 13) Nettoyage & renommage final
   final <- result %>%
-    select(-prev_parc_n) %>%
+    dplyr::select(-prev_parc_n) %>%
     rename(parc = parc_n)               # on garde le parc de nuit (corrigé)
   
   # 14) Sauvegarde
