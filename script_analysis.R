@@ -9,8 +9,8 @@ source("config.R")
 # Définition de l'année d'analyse et des alpages à traiter 
 YEAR = 2023
 YEARS = 2023
-alpage = "Sanguiniere"
-alpages = "Sanguiniere"
+alpage = "Rouanette"
+alpages = "Rouanette"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -402,7 +402,7 @@ if (TRUE) {
     
     # CODE
     # Alpages “Cayolle” et “Sanguiniere” : seuil 500 m, sans critère de durabilité
-    if (alpage %in% c("Cayolle", "Sanguiniere")) {
+    if (alpage %in% c("Cayolle", "Sanguiniere","Rouanette")) {
       traj_by_night_park(
         state_rds_file       = state_rds_file,
         output_parc_rds_file = output_parc_rds_file,
@@ -628,107 +628,6 @@ if (TRUE) {
   
   
   
-  
-  
-  
-# A mettre dans visu !
-  
-
-
-
-data_sf <- readRDS(input_consensus_file)
-# nombre de lignes (ID×date) avec TRUE
-n_transitions <- sum(data_sf$jour_de_transition, na.rm = TRUE)
-message("Nombre de paires ID-date en transition : ", n_transitions)
-
-# (optionnel) nombre de dates uniques en transition
-n_dates <- data_sf %>%
-  dplyr::filter(jour_de_transition) %>%
-  dplyr::pull(date) %>%
-  unique() %>%
-  length()
-message("Nombre de jours (dates) de transition : ", n_dates)
-
-
-
-
-
-
-
-
-
-# Choix : conserver ou non les jours de transition dans les trajectoires
-keep_transition_days <- TRUE  # passe à FALSE pour les exclure
-
-for (alpage in alpages) {
-  
-  # 0) chemins
-  case_state_dir       <- file.path(output_dir, "3. HMM_comportement")
-  input_consensus_file <- file.path(
-    case_state_dir,
-    paste0("Catlog_", YEAR, "_", alpage, "_viterbi_parc_v10.rds")  # <- ton RDS à 8 dates
-  )
-  output_gpkg_file     <- file.path(
-    case_state_dir,
-    paste0("Trajectoire_by_night_parc_", YEAR, "_", alpage, "_V15.gpkg")
-  )
-  
-  # 1) Lecture + conversion en sf
-  data_sf <- readRDS(input_consensus_file) %>%
-    sf::st_as_sf(coords = c("x", "y"), crs = 2154)
-  
-  # 2) On détermine LES 8 dates de transition
-  transition_dates <- data_sf %>%
-    sf::st_drop_geometry() %>%
-    dplyr::filter(jour_de_transition) %>%
-    dplyr::distinct(date)
-  
-  n_dates <- nrow(transition_dates)
-  message("Alpage ", alpage, " : ", n_dates,
-          " jour(s) de transition détecté(s).")  # => devrait afficher 8
-  
-  # 3) (Optionnel) on exclut ou pas ces jours
-  if (!keep_transition_days) {
-    data_sf <- data_sf %>%
-      dplyr::filter(! date %in% transition_dates$date)
-    message("→ Les jours de transition ont été exclus.")
-  } else {
-    message("→ Les jours de transition ont été conservés.")
-  }
-  
-  # 4) Construction des trajectoires par ID / date / parc
-  traj_sf <- data_sf %>%
-    dplyr::arrange(time) %>%
-    dplyr::group_by(ID, date, parc, jour_de_transition) %>%
-    dplyr::summarise(
-      geometry = sf::st_combine(geometry),
-      .groups  = "drop"
-    ) %>%
-    sf::st_cast("LINESTRING")
-  
-  # 5) Écriture dans un Geopackage (on écrase d'abord si besoin)
-  if (file.exists(output_gpkg_file)) file.remove(output_gpkg_file)
-  
-  sf::st_write(
-    data_sf,
-    output_gpkg_file,
-    layer        = "points",
-    driver       = "GPKG"
-  )
-  sf::st_write(
-    traj_sf,
-    output_gpkg_file,
-    layer        = "trajectoires",
-    driver       = "GPKG"
-  )
-}
-
-
-
-
-
-# A mettre dans visu !
-
 
 
 
