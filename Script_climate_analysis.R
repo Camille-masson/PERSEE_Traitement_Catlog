@@ -20,7 +20,7 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 # Définition de l'année d'analyse
 YEAR <- 2023
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Viso"
+alpage <- "Sanguiniere"
 alpages <- "Viso"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
@@ -46,12 +46,12 @@ ALPAGES <- ALPAGES_TOTAL[[as.character(YEAR)]]
 
 #### 1. Préparation des données de SMOD ####
 #------------------------------------------#
-if (TRUE) {
+if (FALSE) {
   # Crop du smod par alpage 
   # Calcul du SMOD moyen sur 10 ans (2023 - 2013)
   # Calcul du fsca (fraction of snow cover)
   
-  year_1 = "2013-09-01"
+  year_1 = "1999-09-01"
   year_2 = "2023-08-31"
   
   # LIBRARY & FUNCTION
@@ -112,6 +112,109 @@ if (TRUE) {
   
 }
   
+
+
+
+
+
+## EXTRACTION DU JEU DE DONNee de la date de d'enneigement médian par année et par alpage : 
+
+library(terra)    # pour lire les rasters SMOD
+library(dplyr)
+library(lubridate)
+
+# ──────────────────────────────
+# 1) Paramètre : dossier source
+# ──────────────────────────────
+output_SMOD_case <- file.path(output_clim_case, "SMOD")
+# ────────────────────────────────────────────────────
+# 2) Lister tous les fichiers SMOD (exclure FSCA/median)
+# ────────────────────────────────────────────────────
+smod_files <- list.files(output_SMOD_case,
+                         full.names = TRUE,
+                         recursive = FALSE) %>%
+  # ne garder que ceux dont le nom commence par "SMOD_"
+  .[grepl("^SMOD_", basename(.))] %>%
+  # exclure les fichiers median et les FSCA
+  .[ !grepl("SMOD_median|Fsca", basename(.), ignore.case = TRUE) ] %>%
+  # ne prendre que les .tif (ou .img si besoin)
+  .[ grepl("\\.tif$", basename(.), ignore.case = TRUE) ]
+
+
+# ─────────────────────────────────────────────────────────────
+# 3) Pour chaque fichier :
+#    - extraire start/end date et alpage depuis le nom
+#    - lire le raster
+#    - calculer la médiane des pixels SMOD (jours depuis 1 Sep)
+#    - convertir ce jour-index en date calend. puis en jour julien
+# ─────────────────────────────────────────────────────────────
+med_list <- lapply(smod_files, function(f){
+  nm     <- basename(f)
+  parts  <- strsplit(nm, "_")[[1]]
+  # parts = c("SMOD", "31TGK", "YYYYMMDD", "YYYYMMDD", "Alpage.tif")
+  start  <- as.Date(parts[3], "%Y%m%d")
+  end    <- as.Date(parts[4], "%Y%m%d")
+  year   <- year(end)                  # année hydrique = année de fin
+  alpage <- sub("\\.tif$", "", parts[5])
+  
+  # lire le raster et extraire toutes les valeurs
+  r      <- rast(f)
+  vals   <- values(r)
+  
+  # médiane de l’index (en jours depuis le 1er sept)
+  med_idx <- round(mean(vals, na.rm = TRUE))
+  
+  # 1) date calendrier correspondante
+  med_date <- start + (med_idx - 1)
+  # 2) jour julien (1 = 1er jan., … 365/366)
+  med_jul  <- yday(med_date)
+  
+  data.frame(
+    year           = year,
+    alpage         = alpage,
+    median_index   = med_idx,
+    date_median    = med_date,
+    julian_median  = med_jul
+  )
+})
+
+# concaténer en un seul data.frame
+df_smod_med <- bind_rows(med_list)
+
+# ───────────────────────────
+# 4) Résultat à l’écran / CSV
+# ───────────────────────────
+print(df_smod_med)
+
+write.csv(df_smod_med,
+          file = file.path(output_SMOD_case, "SMOD_median_summary.csv"),
+          row.names = FALSE)
+message("▶ SMOD median summary written to SMOD_median_summary.csv")
+
+
+## FIN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #### 2. Création du jeu de données : Alti, FSCA, Présence ####
 #------------------------------------------------------------#
 if (TRUE) {
@@ -152,10 +255,13 @@ if (TRUE) {
   
   
   
+  
   # Des .TIF du chargement par quizaine
   #Création du dossier de sortie des indicateur pour la visualistaion
   visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
   chargement_case <- file.path(visu_case, "Taux_chargement")
+  
+  
   case_alpage <- file.path(chargement_case, paste0(YEAR,"_",alpage))
   load_16_30_jun_tif_file <- file.path(case_alpage, paste0("by_quinzaine_",YEAR,"_",alpage,"_16_30_jun.tif"))
   load_1_15_jul_tif_file <- file.path(case_alpage, paste0("by_quinzaine_",YEAR,"_",alpage,"_1_15_jul.tif"))
@@ -182,8 +288,9 @@ if (TRUE) {
   output_clim_data_rds_file_shp <- file.path(output_data_case, paste0("Use_Fsca_Alti_",alpage,"_by_shp.rds"))
   # Un .RDS des données final
   output_clim_data_rds_file_raster <- file.path(output_data_case, paste0("Use_Fsca_Alti_",alpage,"_by_raster.rds"))
-  
-  
+  # Un .RDS des données final
+  output_clim_data_rds_file_raster_parc <- file.path(output_data_case, paste0("Use_Fsca_Alti_",alpage,"_by_raster_and_parc.rds"))
+  output_rds_file_parc <- file.path(output_data_case, paste0("Use_Fsca_Alti_", alpage, "_by_raster_and_parc.rds"))
   
   # CODE 
   
@@ -201,174 +308,27 @@ if (TRUE) {
   
   
   
+  df_final <- generate_loading_data_by_parc(SMOD_tif_file, MNT_tif_file, chargement_case,
+                                            years= c(2022,2023,2024),alpage ,
+                                            output_rds_file = output_clim_data_rds_file_raster_parc,
+                                            threshold = 10, res_raster = 10
+  )
+  
+  
+  
+  
 }
 
-#### 2. Création du jeu de données : Alti, FSCA, Présence ####
-#------------------------------------------------------------#
-if (FALSE) {
-  # Pourchaque pixel a 20 mètres attribution  : 
-  # - FSCA
-  # - Altitude
-  # - Chargement / Densité de kernel
-  # Donc soit l'utilisation par le SHP des polygones de kernel
-  # Soit le taux de chargement par quizaine (méthode préféré pour les plots)
-  library(dplyr)
-  library(lubridate)
-  library(dbscan)
-
-  # Dossier contenant les fichiers du comportement
-  case_state_file = file.path(output_dir, "3. HMM_comportement")
-  # Un .RDS contenant les trajectoires (filtrées, éventuellement sous-échantillonnées)
-  state_rds_file = file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi.rds"))
-  
-  
-  # SORTIE
-  # Un .RDS des données 
-  output_parc_rds_file <- file.path(case_state_file, paste0("Catlog_",YEAR,"_",alpage, "_viterbi_parc.rds"))
-  
-  
-  # CODE 
-  
-  data_base <- readRDS(state_rds_file)
-  
-
-  
-  
-    # 1. Paramètres à ajuster
-  window_minutes <- 45    # taille de la fenêtre matin / nuit en minutes
-  eps_dist       <- 500   # seuil spatial DBSCAN en mètres
-  min_days       <- 5     # nombre minimum de jours pour qu’un "parc" soit validé
-  
-  
-  
-  
-  
-  # 2. Lecture des données et création de la colonne date
-  data <- readRDS(state_rds_file) %>%
-    dplyr::mutate(date = lubridate::as_date(time))
-  
-  # 3. Fonction pour extraire les window_minutes du début ou de la fin d’un jour
-  get_window <- function(df, at_start = TRUE) {
-    if (at_start) {
-      df %>% dplyr::filter(time <= min(time) + lubridate::minutes(window_minutes))
-    } else {
-      df %>% dplyr::filter(time >= max(time) - lubridate::minutes(window_minutes))
-    }
-  }
-  
-  # 4. Calcul des centroïdes « morning » / « night »
-  centroids <- data %>%
-    dplyr::group_by(ID, date) %>%
-    do({
-      df_day <- .
-      tibble::tibble(
-        phase = c("morning","night"),
-        x     = c(
-          mean(get_window(df_day, TRUE)$x,  na.rm = TRUE),
-          mean(get_window(df_day, FALSE)$x, na.rm = TRUE)
-        ),
-        y     = c(
-          mean(get_window(df_day, TRUE)$y,  na.rm = TRUE),
-          mean(get_window(df_day, FALSE)$y, na.rm = TRUE)
-        )
-      )
-    }) %>%
-    dplyr::ungroup()
-  
-  # 5. Extraction des centroïdes de nuit et clustering spatial DBSCAN
-  night_centroids <- centroids %>%
-    dplyr::filter(phase == "night") %>%
-    dplyr::ungroup()
-  
-  coords <- as.matrix(night_centroids[, c("x", "y")])
-  res_db <- dbscan(coords, eps = eps_dist, minPts = 1)
-  
-  night_centroids <- night_centroids %>%
-    dplyr::mutate(parc = paste0("Parc_", res_db$cluster))
-  
-  # 6. Fusion des petits « parcs » (< min_days) vers le parc du jour précédent
-  # 6.1 calculer la taille en jours de chaque parc
-  parc_counts <- night_centroids %>%
-    dplyr::group_by(ID, parc) %>%
-    dplyr::summarise(n_days = n(), .groups = "drop")
-  
-  small_parcs <- parc_counts %>%
-    dplyr::filter(n_days < min_days) %>%
-    dplyr::pull(parc)
-  
-  # 6.2 réassignation des jours « petits » vers le parc précédent
-  night_centroids <- night_centroids %>%
-    dplyr::arrange(ID, date) %>%
-    dplyr::group_by(ID) %>%
-    dplyr::mutate(
-      parc = ifelse(
-        parc %in% small_parcs & !is.na(dplyr::lag(parc)),
-        dplyr::lag(parc),
-        parc
-      )
-    ) %>%
-    dplyr::ungroup()
-  
-  # 7. Ré‑association du label de parc à la table principale et sauvegarde
-  data_with_parc <- data %>%
-    dplyr::left_join(
-      night_centroids %>% dplyr::select(ID, date, parc),
-      by = c("ID", "date")
-    )
-  
-  saveRDS(data_with_parc, output_parc_rds_file)
-  
-  
-  
-  
-  
-  # 1. Charger les packages
-  library(dplyr)
-  library(sf)
-  
-  # 2. Convertir votre table data_with_parc en sf (points)
-  #    en donnant le système de coordonnées (Lambert‑93 = EPSG:2154)
-  data_sf <- data_with_parc %>%
-    sf::st_as_sf(coords = c("x", "y"), crs = 2154)
-  
-  # 3. Construire une LINESTRING par ID/date/parc
-  traj_sf <- data_sf %>%
-    arrange(time) %>%                       # s’assurer de l’ordre chronologique
-    group_by(ID, date, parc) %>%            # un groupe = une trajectoire dans un parc
-    summarise(
-      geometry = st_combine(geometry),      # combiner tous les points
-      .groups = "drop"
-    ) %>%
-    st_cast("LINESTRING")                   # convertir en ligne
-  
-  # 4. Définir le chemin de sortie GeoPackage
-  output_gpkg_file <- file.path(
-    output_data_case,
-    paste0("trajectoires_parc_", alpage, ".gpkg")
-  )
-  
-  # 5. Écrire le GPKG (remplace la couche si elle existe déjà)
-  sf::st_write(
-    traj_sf,
-    output_gpkg_file,
-    layer = "trajectoires",
-    driver = "GPKG",
-    delete_layer = TRUE
-  )
-  
-  # (Optionnel) export des points pour vérification
-  sf::st_write(
-    data_sf,
-    output_gpkg_file,
-    layer = "points",
-    driver = "GPKG",
-    delete_layer = FALSE
-  )
-  
 
 
 
- 
+
+
+
+
+
+
+
 #### 3. Création du plot de l'utilisation en fonction du climat ####
 #------------------------------------------------------------------#
 if (FALSE) {
@@ -394,8 +354,8 @@ if (FALSE) {
   library(scales)
   source(file.path(functions_dir, "Functions_plot_snow_ndvi.R"))
   
-  # Paramètres d'alpages
-  alpages <- "Cayolle"
+  #Paramètres d'alpages
+  alpages <- "Sanguiniere"
   
   # ENTREE
   # Dossier général pour l'analyse climatique
@@ -438,8 +398,52 @@ if (FALSE) {
     alpages, 
     data_dir = data_case, 
     output_dir = output_plot_case, 
-    years_to_use = c(2022,2023, 2024))
+    years_to_use = c(2022, 2023, 2024))
   }
+  
+  
+  
+  
+  source(file.path(functions_dir, "Functions_plot_snow_ndvi.R"))
+  
+  
+  
+  
+  plot_fsca_alti_points_parc_verif(
+    alpages       = alpages,
+    data_dir      = data_case,
+    output_dir    = output_plot_case,
+    years_to_use  = c(2022,2023, 2024)
+  )
+  
+  
+ 
+  plot_fsca_alti_points_parc(
+    alpages       = alpages,
+    data_dir      = data_case,
+    output_dir    = output_plot_case,
+    years_to_use  = c( 2022, 2023, 2024)
+  )
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   # Plot violin avec le fsca

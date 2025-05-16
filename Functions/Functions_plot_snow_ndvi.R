@@ -340,6 +340,26 @@ label_map <- c(
   "16_30_aou" = "16-30 Août"
 )
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ### 1) Fonction pour tracer les points pour un seul alpage, par quinzaine
 plot_fsca_alti_points_one <- function(alpage,
                                       data_rds,
@@ -490,6 +510,648 @@ plot_fsca_alti_points <- function(alpages,
   message("Plot saved to: ", output_file)
   return(combined_plot)
 }
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)      # pour squish
+library(ggnewscale)  # new_scale_color()
+library(patchwork)   # wrap_plots, plot_layout, plot_annotation
+
+# Utilitaire pour trier chronologiquement
+get_start_date <- function(ps) {
+  start <- sub("_.*", "", ps)             # "mi-juin"
+  parts <- strsplit(start, "-")[[1]]      # c("mi","juin")
+  timing   <- parts[1]                    # "mi" ou "début"
+  monthstr <- parts[2]
+  mmap <- c(juin=6, juillet=7, aout=8, août=8, septembre=9, sept=9)
+  m <- mmap[tolower(monthstr)]
+  d <- if (timing=="début") 1 else 15
+  as.Date(sprintf("2000-%02d-%02d", m, d))
+}
+
+plot_fsca_alti_points_one_parc <- function(alpage,
+                                           data_rds,
+                                           years_to_use = c(2023, 2024)) {
+  # Vos 5 palettes d'origine
+  color_map <- list(
+    c("#9ecae1","#6baed6","#4292c6","#2171b5","#08519c","#08306b"),
+    c("#bcbddc","#9e9ac8","#807dba","#6a51a3","#54278f","#3f007d"),
+    c("#fdae6b","#fd8d3c","#f16913","#d94801","#a63603","#7f2704"),
+    c("#c994c7","#df65b0","#e7298a","#ce1256","#980043","#67001f"),
+    c("#a1d99b","#74c476","#41ab5d","#238b45","#006d2c","#00441b")
+  )
+  
+  # Lecture + pivot + filtres
+  df <- readRDS(data_rds) %>%
+    pivot_longer(
+      cols          = starts_with("load_"),
+      names_to      = c("load_year","load_parc"),
+      names_pattern = "load_(\\d{4})_(.*)",
+      values_to     = "load"
+    ) %>%
+    mutate(
+      load_year   = as.integer(load_year),
+      load_round  = round(load/10)*10,
+      capped_load = pmin(pmax(load_round,10),1000)
+    ) %>%
+    filter(
+      load_year %in% years_to_use,
+      !is.na(load),
+      load >= 10, load < 1000
+    )
+  
+  # Base du plot
+  p <- ggplot(df, aes(x = FSCA, y = altitude)) +
+    facet_wrap(~ load_year) +
+    scale_x_reverse(limits = c(1, 0), expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    labs(x = "FSCA", y = "Altitude (m)", title = alpage) +
+    theme_bw(base_size = 14) +
+    theme(
+      strip.background = element_rect(fill = "grey90"),
+      strip.text       = element_text(face = "bold")
+    )
+  
+  # Extraire et trier les parc
+  raw_ps <- unique(sub("^.*parc_", "", df$load_parc))
+  raw_ps <- raw_ps[!is.na(sapply(raw_ps, get_start_date))]
+  ps_ord <- raw_ps[order(sapply(raw_ps, get_start_date))]
+  ps_use <- if (length(ps_ord) > 3) head(ps_ord, -1) else ps_ord
+  
+  # Boucle sur chaque parc
+  for (i in seq_along(ps_use)) {
+    ps        <- ps_use[i]
+    pal       <- color_map[[(i-1) %% length(color_map) + 1]]
+    label_ps  <- gsub("_", " à ", ps)
+    full_lps  <- grep(paste0("parc_", ps, "$"), df$load_parc, value = TRUE)
+    dfp       <- df %>% filter(load_parc %in% full_lps) %>% sample_frac(0.5)
+    if (nrow(dfp) == 0) next
+    
+    p <- p +
+      new_scale_color() +
+      geom_point(
+        data  = dfp,
+        aes(color = capped_load),
+        size  = 1.5, alpha = 0.6
+      ) +
+      scale_color_gradient(
+        low    = pal[1],
+        high   = pal[6],
+        limits = c(10, 1000),
+        trans  = "log",
+        oob    = squish,
+        name   = paste0("Parc : ", label_ps),
+        breaks = c(10, 1000),
+        labels = c("10", "<1000"),
+        guide  = guide_colorbar(
+          barwidth       = unit(1, "cm"),
+          barheight      = unit(0.8, "cm"),
+          direction      = "horizontal",
+          label.position = "top",
+          title.position = "bottom",
+          title.hjust    = 0.5,
+          order          = i
+        )
+      )
+  }
+  
+  return(p)
+}
+
+plot_fsca_alti_points_parc <- function(alpages,
+                                       data_dir,
+                                       output_dir,
+                                       years_to_use = c(2023, 2024),
+                                       file_prefix  = "Plot_fsca_alti_points_parc",
+                                       dpi          = 300) {
+  plots <- list()
+  for (i in seq_along(alpages)) {
+    alpage <- alpages[i]
+    rds_f  <- file.path(
+      data_dir,
+      paste0("Use_Fsca_Alti_", alpage, "_by_raster_and_parc.rds")
+    )
+    p <- plot_fsca_alti_points_one_parc(alpage, rds_f, years_to_use)
+    if (i < length(alpages)) p <- p + theme(legend.position = "none")
+    plots[[alpage]] <- p
+  }
+  
+  # 1) Empile et collecte les légendes
+  combined <- wrap_plots(plots, ncol = 1) +
+    plot_layout(guides = "collect") &
+    theme(
+      legend.position   = "bottom",
+      legend.box        = "horizontal",
+      legend.spacing.x  = unit(0.3, "cm"),
+      legend.key.width  = unit(0.8, "cm"),
+      legend.key.height = unit(0.3, "cm"),
+      legend.text       = element_text(size = 7),
+      legend.title      = element_text(size = 8)
+    )
+  
+  # 2) Titre global
+  combined <- combined +
+    plot_annotation(
+      title = paste0(
+        "Alpages : ", paste(alpages, collapse = ", "),
+        " | Années : ", paste(years_to_use, collapse = ", ")
+      ),
+      theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+    )
+  
+  # 3) Sauvegarde A4 portrait en JPG
+  fname <- paste0(
+    file_prefix, "_",
+    paste(alpages, collapse = "_"),
+    "_Years_", paste(years_to_use, collapse = "_"),
+    ".jpg"
+  )
+  out <- file.path(output_dir, fname)
+  ggsave(out, combined,
+         device = "jpg",
+         width  = 8.27,
+         height = 11.69,
+         units  = "in",
+         dpi    = dpi)
+  message("Plot saved to: ", out)
+  return(combined)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)        # pour squish
+library(ggnewscale)    # new_scale_color()
+library(patchwork)     # wrap_plots, plot_layout, plot_annotation
+
+# Utilitaire pour trier chronologiquement les noms de parc
+get_start_date <- function(ps) {
+  start  <- sub("_.*", "", ps)
+  parts  <- strsplit(start, "-")[[1]]
+  timing <- parts[1]; mstr <- parts[2]
+  mmap   <- c(juin=6, juillet=7, aout=8, août=8, septembre=9, sept=9)
+  month  <- mmap[tolower(mstr)]
+  day    <- if (timing == "début") 1 else 15
+  as.Date(sprintf("2000-%02d-%02d", month, day))
+}
+plot_fsca_alti_points_one_parc_verif <- function(alpage,
+                                           data_rds,
+                                           years_to_use = c(2023, 2024)) {
+  # Palettes
+  color_map <- list(
+    c("#9ecae1","#6baed6","#4292c6","#2171b5","#08519c","#08306b"),
+    c("#bcbddc","#9e9ac8","#807dba","#6a51a3","#54278f","#3f007d"),
+    c("#fdae6b","#fd8d3c","#f16913","#d94801","#a63603","#7f2704"),
+    c("#c994c7","#df65b0","#e7298a","#ce1256","#980043","#67001f"),
+    c("#a1d99b","#74c476","#41ab5d","#238b45","#006d2c","#00441b")  
+  )
+  
+  
+  # Lecture
+  df_full <- readRDS(data_rds)
+  
+  # Fond gris : tous les pixels x alt, répliqué par année
+  data_base  <- unique(df_full[, c("FSCA","altitude")])
+  data_base2 <- tidyr::crossing(data_base, load_year = years_to_use)
+  
+  # Points colorés
+  df <- df_full %>%
+    pivot_longer(
+      cols          = starts_with("load_"),
+      names_to      = c("load_year","load_parc"),
+      names_pattern = "load_(\\d{4})_(.*)",
+      values_to     = "load"
+    ) %>%
+    mutate(
+      load_year   = as.integer(load_year),
+      load_round  = round(load/10)*10,
+      capped_load = pmin(pmax(load_round, 10), 1000)
+    ) %>%
+    filter(
+      load_year %in% years_to_use,
+      !is.na(load),
+      load >= 10, load < 1000
+    )
+  
+  # Plot de base + fond gris
+  p <- ggplot() +
+    geom_point(
+      data        = data_base2,
+      aes(x = FSCA, y = altitude),
+      color       = "grey80",
+      size        = 0.5,
+      alpha       = 0.4,
+      inherit.aes = FALSE
+    ) +
+    facet_wrap(~ load_year) +
+    scale_x_reverse(limits = c(1, 0), expand = c(0, 0)) +
+    scale_y_continuous(expand = c(0, 0)) +
+    labs(x = "FSCA", y = "Altitude (m)", title = alpage) +
+    theme_bw(base_size = 14) +
+    theme(
+      strip.background = element_rect(fill = "grey90"),
+      strip.text       = element_text(face = "bold")
+    )
+  
+  # Tri et suppression conditionnelle du dernier parc
+  raw_ps <- unique(sub("^.*parc_", "", df$load_parc))
+  raw_ps <- raw_ps[!is.na(sapply(raw_ps, get_start_date))]
+  ps_ord <- raw_ps[order(sapply(raw_ps, get_start_date))]
+  ps_use <- if (length(ps_ord) > 3) head(ps_ord, -1) else ps_ord
+  
+  # Ajout des points colorés
+  for (i in seq_along(ps_use)) {
+    ps       <- ps_use[i]
+    pal      <- color_map[[(i-1) %% length(color_map) + 1]]
+    label_ps <- gsub("_", " à ", ps)
+    full_lps <- grep(paste0("parc_", ps, "$"), df$load_parc, value = TRUE)
+    dfp      <- df %>% filter(load_parc %in% full_lps) %>% sample_frac(0.5)
+    if (!nrow(dfp)) next
+    
+    p <- p +
+      ggnewscale::new_scale_color() +
+      geom_point(
+        data = dfp,
+        aes(x = FSCA, y = altitude, color = capped_load),
+        size  = 1.5, alpha = 0.6
+      ) +
+      scale_color_gradient(
+        low    = pal[1],
+        high   = pal[6],
+        limits = c(10,1000),
+        trans  = "log",
+        oob    = scales::squish,
+        name   = paste0("Parc : ", label_ps),
+        breaks = c(10,1000),
+        labels = c("10","<1000"),
+        guide  = guide_colorbar(
+          barwidth       = unit(1, "cm"),
+          barheight      = unit(0.8, "cm"),
+          direction      = "horizontal",
+          label.position = "top",
+          title.position = "bottom",
+          title.hjust    = 0.5,
+          order          = i
+        )
+      )
+  }
+  
+  return(p)
+}
+
+# 2) Empilement et sauvegarde A4 portrait
+plot_fsca_alti_points_parc_verif <- function(alpages,
+                                       data_dir,
+                                       output_dir,
+                                       years_to_use = c(2023, 2024),
+                                       file_prefix  = "Plot_fsca_alti_points_parc",
+                                       dpi          = 300) {
+  plots <- vector("list", length(alpages))
+  for (i in seq_along(alpages)) {
+    alpage <- alpages[i]
+    rds_f  <- file.path(
+      data_dir,
+      paste0("Use_Fsca_Alti_", alpage, "_by_raster_and_parc.rds")
+    )
+    p <- plot_fsca_alti_points_one_parc_verif(alpage, rds_f, years_to_use)
+    if (i < length(alpages)) p <- p + theme(legend.position="none")
+    plots[[i]] <- p
+  }
+  
+  combined <- wrap_plots(plots, ncol = 1) +
+    plot_layout(guides = "collect") +
+    plot_annotation(
+      title = paste0(
+        "Alpages : ", paste(alpages, collapse=", "),
+        " | Années : ", paste(years_to_use, collapse=", ")
+      ),
+      theme = theme(plot.title=element_text(hjust=0.5, face="bold"))
+    ) &
+    theme(
+      legend.position   = "bottom",
+      legend.box        = "horizontal",
+      legend.spacing.x  = unit(0.3, "cm"),
+      legend.key.width  = unit(0.8, "cm"),
+      legend.key.height = unit(0.3, "cm"),
+      legend.text       = element_text(size = 7),
+      legend.title      = element_text(size = 8)
+    )
+  
+  # Sauvegarde JPG A4 portrait
+  fname <- paste0(
+    file_prefix, "_",
+    paste(alpages, collapse="_"),
+    "_Years_", paste(years_to_use, collapse="_"),
+    "_with_point.jpg"
+  )
+  out <- file.path(output_dir, fname)
+  ggsave(out, combined,
+         device = "jpg",
+         width  = 8.27,
+         height = 11.69,
+         units  = "in",
+         dpi    = dpi)
+  message("Plot saved to: ", out)
+  return(combined)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(scales)        # pour squish()
+library(ggnewscale)    # pour new_scale_color()
+library(patchwork)     # pour wrap_plots, plot_layout, plot_annotation
+
+# Utilitaire pour trier les noms de parc
+get_start_date <- function(ps) {
+  parts  <- strsplit(sub("_.*","",ps), "-")[[1]]
+  timing <- parts[1]; mstr <- parts[2]
+  mmap   <- c(juin=6, juillet=7, aout=8, août=8, septembre=9, sept=9)
+  month  <- mmap[tolower(mstr)]
+  day    <- if (timing=="début") 1 else 15
+  as.Date(sprintf("2000-%02d-%02d", month, day))
+}
+
+plot_fsca_alti_points_one_parc <- function(alpage,
+                                           data_rds,
+                                           years_to_use = c(2022, 2023, 2024),
+                                           nb_bins = 40) {
+  # — Vos palettes « quinzaine »
+  color_map <- list(
+    c("#9ecae1","#6baed6","#4292c6","#2171b5","#08519c","#08306b"),
+    c("#bcbddc","#9e9ac8","#807dba","#6a51a3","#54278f","#3f007d"),
+    c("#fdae6b","#fd8d3c","#f16913","#d94801","#a63603","#7f2704"),
+    c("#c994c7","#df65b0","#e7298a","#ce1256","#980043","#67001f"),
+    c("#a1d99b","#74c476","#41ab5d","#238b45","#006d2c","#00441b")  
+    )
+  
+  
+  # 1) Lecture complète
+  df_full <- readRDS(data_rds)
+  
+  # 2) Construire la bande enveloppe (0.5% sup) et binning
+  pts        <- unique(df_full[, c("FSCA","altitude")])
+  alt_max_cut<- quantile(pts$altitude, 0.996)
+  pts_trim   <- pts %>% filter(altitude <= alt_max_cut)
+  
+  breaks     <- seq(min(pts_trim$FSCA), max(pts_trim$FSCA),
+                    length.out = nb_bins + 1)
+  bin_data   <- lapply(seq_len(nb_bins), function(i) {
+    sel <- pts_trim$FSCA >= breaks[i] & pts_trim$FSCA < breaks[i+1]
+    sub <- pts_trim[sel, ]
+    if (!nrow(sub)) return(NULL)
+    data.frame(
+      fs_mid  = mean(breaks[i:(i+1)]),
+      alt_min = min(sub$altitude),
+      alt_max = max(sub$altitude)
+    )
+  }) %>% bind_rows()
+  band_df    <- crossing(bin_data, load_year = years_to_use)
+  
+  # 3) Préparer les points colorés
+  df <- df_full %>%
+    pivot_longer(
+      cols          = starts_with("load_"),
+      names_to      = c("load_year","load_parc"),
+      names_pattern = "load_(\\d{4})_(.*)",
+      values_to     = "load"
+    ) %>%
+    mutate(
+      load_year   = as.integer(load_year),
+      load_round  = round(load / 10) * 10,
+      capped_load = pmin(pmax(load_round, 10), 1000)
+    ) %>%
+    filter(
+      load_year %in% years_to_use,
+      !is.na(load),
+      load >= 10, load < 1000
+    )
+  
+  # 4) Définir marges de dézoom
+  f_min <- min(pts_trim$FSCA); f_max <- max(pts_trim$FSCA)
+  f_pad <- 0.05 * (f_max - f_min)
+  x_limits <- c(f_max + f_pad, f_min - f_pad)  # pour scale_x_reverse
+  
+  a_min <- min(pts_trim$altitude); a_max <- max(pts_trim$altitude)
+  a_pad <- 0.05 * (a_max - a_min)
+  y_limits <- c(a_min - a_pad, a_max + a_pad)
+  
+  # 5) Tracé de base + bande enveloppe en fond
+  p <- ggplot() +
+    geom_ribbon(
+      data        = band_df,
+      aes(x = fs_mid, ymin = alt_min, ymax = alt_max, group = load_year),
+      fill        = "grey80",
+      alpha       = 0.4,
+      inherit.aes = FALSE
+    ) +
+    facet_wrap(~ load_year) +
+    scale_x_reverse(limits = x_limits, expand = c(0, 0)) +
+    scale_y_continuous(limits = y_limits, expand = c(0, 0)) +
+    labs(x = "FSCA", y = "Altitude (m)", title = alpage) +
+    theme_bw(base_size = 14) +
+    theme(
+      strip.background = element_rect(fill = "grey90"),
+      strip.text       = element_text(face = "bold")
+    )
+  
+  # 6) Tri chrono des parc & suppression conditionnelle du dernier
+  raw_ps <- unique(sub("^.*parc_", "", df$load_parc))
+  raw_ps <- raw_ps[!is.na(sapply(raw_ps, get_start_date))]
+  ps_ord <- raw_ps[order(sapply(raw_ps, get_start_date))]
+  ps_use <- if (length(ps_ord) > 3) head(ps_ord, -1) else ps_ord
+  
+  # 7) Superposer les points colorés parc par parc
+  for (i in seq_along(ps_use)) {
+    ps        <- ps_use[i]
+    pal       <- color_map[[(i-1) %% length(color_map) + 1]]
+    label_ps  <- gsub("_", " à ", ps)
+    full_lps  <- grep(paste0("parc_", ps, "$"), df$load_parc, value = TRUE)
+    dfp       <- df %>% filter(load_parc %in% full_lps) %>% sample_frac(0.5)
+    if (!nrow(dfp)) next
+    
+    p <- p +
+      ggnewscale::new_scale_color() +
+      geom_point(
+        data = dfp,
+        aes(x = FSCA, y = altitude, color = capped_load),
+        size  = 1.5, alpha = 0.6
+      ) +
+      scale_color_gradient(
+        low    = pal[1],
+        high   = pal[6],
+        limits = c(10, 1000),
+        trans  = "log",
+        oob    = scales::squish,
+        name   = paste0("Parc : ", label_ps),
+        breaks = c(10, 1000),
+        labels = c("10", "<1000"),
+        guide  = guide_colorbar(
+          barwidth       = unit(1, "cm"),
+          barheight      = unit(0.8, "cm"),
+          direction      = "horizontal",
+          label.position = "top",
+          title.position = "bottom",
+          title.hjust    = 0.5,
+          order          = i
+        )
+      )
+  }
+  
+  return(p)
+}
+
+# 8) Empilement de plusieurs alpages & export A4 portrait
+plot_fsca_alti_points_parc <- function(alpages,
+                                       data_dir,
+                                       output_dir,
+                                       years_to_use = c(2022, 2023, 2024),
+                                       file_prefix  = "Plot_fsca_alti_points_parc",
+                                       dpi          = 300) {
+  plots <- vector("list", length(alpages))
+  for (i in seq_along(alpages)) {
+    alpage <- alpages[i]
+    rds_f  <- file.path(
+      data_dir,
+      paste0("Use_Fsca_Alti_", alpage, "_by_raster_and_parc.rds")
+    )
+    p <- plot_fsca_alti_points_one_parc(alpage, rds_f, years_to_use)
+    if (i < length(alpages)) p <- p + theme(legend.position = "none")
+    plots[[i]] <- p
+  }
+  
+  combined <- wrap_plots(plots, ncol = 1) +
+    plot_layout(guides = "collect") +
+    plot_annotation(
+      title = paste0(
+        "Alpages : ", paste(alpages, collapse = ", "),
+        " | Années : ", paste(years_to_use, collapse = ", ")
+      ),
+      theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+    ) &
+    theme(
+      legend.position   = "bottom",
+      legend.box        = "horizontal",
+      legend.spacing.x  = unit(0.3, "cm"),
+      legend.key.width  = unit(0.8, "cm"),
+      legend.key.height = unit(0.3, "cm"),
+      legend.text       = element_text(size = 7),
+      legend.title      = element_text(size = 8)
+    )
+  
+  # Sauvegarde JPG A4 portrait
+  fname <- paste0(
+    file_prefix, "_",
+    paste(alpages, collapse = "_"),
+    "_Years_", paste(years_to_use, collapse = "_"),
+    ".jpg"
+  )
+  out <- file.path(output_dir, fname)
+  ggsave(out, combined,
+         device   = "jpg",
+         width    = 8.27,
+         height   = 11.69,
+         units    = "in",
+         dpi      = dpi)
+  message("Plot saved to: ", out)
+  return(combined)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

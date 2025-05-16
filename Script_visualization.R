@@ -9,11 +9,11 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2024
-YEARS <- 2024
+YEAR <- 2022
+YEARS <- c(2022, 2023, 2024)
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
 alpage <- "Viso"
-alpages <- "Viso"
+alpages <- c("Sanguiniere","Cayolle", "Viso")
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -101,7 +101,6 @@ if (FALSE) {
   park_tot_filterd_rds   <- file.path(case_flock_alpage_file, paste0("by_park_transition_filtered_", YEAR,"_",alpage,".rds"))
   
   
-  readRDS(park_tot_filterd_rds)
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
   case_UP_file = file.path(raster_dir, "UP")
   # Un .SHP avec les Unités pastorales UP
@@ -129,6 +128,13 @@ if (FALSE) {
   if (!dir.exists(output_case_alpage)) {
     dir.create(output_case_alpage, recursive = TRUE)
   }
+  
+  #Créeation du sous dossier pour les park
+  output_case_parc <- file.path(output_case_alpage, paste0("Parc_",YEAR))
+  if (!dir.exists(output_case_parc)) {
+    dir.create(output_case_parc, recursive = TRUE)
+  }
+  
   
   
   # Un .TIF par alpage contenant les charges par comportement
@@ -205,7 +211,7 @@ if (FALSE) {
   if (TRUE){
     park_total_flock_load_tif_filtered(
       park_rds    = park_tot_filterd_rds,
-      output_dir  = output_case_alpage,
+      output_dir  = output_case_parc,
       YEAR        = YEAR,
       alpage      = alpage,
       res_raster  = 10              
@@ -469,8 +475,8 @@ if (FALSE){
   
  }
   
-#### 5. Polygon d'utilisation tout les 15 jours ####
-#--------------------------------------------------#  
+#### 5. Polygon d'utilisation  ####
+#---------------------------------#  
 if (FALSE){
   
   library(sf)
@@ -540,7 +546,7 @@ if (FALSE){
     output_shp,
     YEAR,
     alpage,
-    percentage                  = 0.75,
+    percentage                  = 0.9,
     n_grid                      = 200,
     small_poly_threshold_percent = 0.05,
     crs                         = 2154
@@ -568,19 +574,7 @@ if (FALSE){
   
   
   }
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
 
-  }
-  
 #### 6. Carto et fond de carte ####
 #---------------------------------#
 if (FALSE){
@@ -1064,8 +1058,6 @@ if (FALSE){
  
 }
 
-
-
 #### 10. Delta de chargement ####
 #-------------------------------#
 if (FALSE){
@@ -1204,86 +1196,713 @@ if (FALSE){
   
 }
 
-
-
-
-
-
-#### 11. PLOT DE MERDE ####
-#-------------------------#
-
-# install.packages(c("ggplot2","dplyr","tibble"))
-library(ggplot2)
-library(dplyr)
-library(tibble)
-
-# 1) Ordres souhaités
-rings      <- c("Zone de plaine","Zone de montagne")
-categories <- c(
-  "Bovins Laitier", "Bovins Viande", "Ovins et Caprins",
-  "Porcins", "Mixte", "Cultures"
-)
-
-# 2) Préparation du data.frame
-df <- tribble(
-  ~category,            ~percent, ~ring,
-  "Bovins Laitier",     10,       "Zone de plaine",
-  "Bovins Viande",      12,       "Zone de plaine",
-  "Ovins et Caprins",    6,       "Zone de plaine",
-  "Porcins",             6,       "Zone de plaine",
-  "Mixte",              17,       "Zone de plaine",
-  "Cultures",           49,       "Zone de plaine",
-  "Bovins Laitier",     16,       "Zone de montagne",
-  "Bovins Viande",      24,       "Zone de montagne",
-  "Ovins et Caprins",   14,       "Zone de montagne",
-  "Porcins",             4,       "Zone de montagne",
-  "Mixte",              18,       "Zone de montagne",
-  "Cultures",           24,       "Zone de montagne"
-) %>%
-  mutate(
-    ring     = factor(ring, levels = rings),
-    category = factor(category, levels = categories),
-    x        = as.numeric(ring)           # x=1 pour plaine, x=2 pour montagne
+#### 11. PLOT DIAPO ####
+#----------------------#
+if (FALSE){
+  library(dplyr)
+  library(tidyr)
+  library(ggplot2)
+  library(ggplot2)
+  library(dplyr)
+  library(tibble)
+  library(ggplot2)
+  library(dplyr)
+  library(tibble)
+  
+  library(ggplot2)
+  library(dplyr)
+  library(tibble)
+  
+  # 1) Vos données
+  df <- tribble(
+    ~category,            ~percent, ~ring,
+    "Bovins Laitier",     10,       "Zone de plaine",
+    "Bovins Viande",      12,       "Zone de plaine",
+    "Ovins et Caprins",    6,       "Zone de plaine",
+    "Porcins",             6,       "Zone de plaine",
+    "Mixte",              17,       "Zone de plaine",
+    "Cultures",           49,       "Zone de plaine",
+    "Bovins Laitier",     16,       "Zone de montagne",
+    "Bovins Viande",      24,       "Zone de montagne",
+    "Ovins et Caprins",   14,       "Zone de montagne",
+    "Porcins",             4,       "Zone de montagne",
+    "Mixte",              18,       "Zone de montagne",
+    "Cultures",           24,       "Zone de montagne"
   )
+  
+  # 2) On définit l’ordre des catégories **inverse** (Cultures en bas)
+  original_levels <- c(
+    "Bovins Laitier","Bovins Viande","Ovins et Caprins",
+    "Porcins","Mixte","Cultures"
+  )
+  df <- df %>%
+    mutate(
+      ring     = factor(ring, levels = c("Zone de plaine","Zone de montagne")),
+      category = factor(category, levels = rev(original_levels))
+    )
+  
+  # 3) Palette manuelle : Cultures = gris clair, les autres Dark2
+  my_cols <- c(
+    "Cultures"           = "#D3D3D3",
+    "Mixte"              = "#1B9E77",
+    "Porcins"            = "#D95F02",
+    "Ovins et Caprins"   = "#7570B3",
+    "Bovins Viande"      = "#E7298A",
+    "Bovins Laitier"     = "#66A61E"
+  )
+  
+  # 4) Le barplot empilé
+  ggplot(df, aes(x = ring, y = percent, fill = category)) +
+    geom_col(width = 0.6, color = "white", size = 0.3) +
+    scale_fill_manual(values = my_cols) +
+    # labels % au centre de chaque segment
+    geom_text(
+      aes(label = paste0(percent, "%")),
+      position = position_stack(vjust = 0.5),
+      size = 3, color = "grey20"
+    ) +
+    # thème épuré + transparent
+    theme_void() +
+    theme(
+      legend.position   = "right",
+      legend.title      = element_blank(),
+      plot.background   = element_rect(fill = NA, color = NA),
+      panel.background  = element_rect(fill = NA, color = NA),
+      axis.text         = element_blank(),
+      axis.ticks        = element_blank()
+    )
+  
+  
+  
+  
+  
+  
+  
+  
+  library(ggplot2)
+  library(dplyr)
+  library(tibble)
+  library(RColorBrewer)
+  
+  # 1) Données
+  df <- tribble(
+    ~category,            ~percent, ~ring,
+    "Bovins Laitier",     10,       "Zone de plaine",
+    "Bovins Viande",      12,       "Zone de plaine",
+    "Ovins et Caprins",    6,       "Zone de plaine",
+    "Porcins",             6,       "Zone de plaine",
+    "Mixte",              17,       "Zone de plaine",
+    "Cultures",           49,       "Zone de plaine",
+    "Bovins Laitier",     16,       "Zone de montagne",
+    "Bovins Viande",      24,       "Zone de montagne",
+    "Ovins et Caprins",   14,       "Zone de montagne",
+    "Porcins",             4,       "Zone de montagne",
+    "Mixte",              18,       "Zone de montagne",
+    "Cultures",           24,       "Zone de montagne"
+  )
+  
+  # 2) Ordre des catégories (Cultures tout en bas)
+  df <- df %>%
+    mutate(
+      ring = factor(ring, levels = c("Zone de plaine","Zone de montagne")),
+      category = factor(category,
+                        levels = c("Cultures","Mixte","Porcins","Ovins et Caprins","Bovins Viande","Bovins Laitier")
+      )
+    )
+  
+  # 3) Palette
+  pal <- c(
+    "Cultures"           = "#D3D3D3",
+    "Mixte"              = brewer.pal(5, "Set2")[1],
+    "Porcins"            = brewer.pal(5, "Set2")[2],
+    "Ovins et Caprins"   = brewer.pal(5, "Set2")[3],
+    "Bovins Viande"      = brewer.pal(5, "Set2")[4],
+    "Bovins Laitier"     = brewer.pal(5, "Set2")[5]
+  )
+  
+  # 4) Plot
+  ggplot(df, aes(x = ring, y = percent, fill = category)) +
+    geom_col(width = 0.6, color = NA) +  
+    scale_fill_manual(values = pal) +
+    geom_text(
+      aes(label = paste0(percent, "%")),
+      position = position_stack(vjust = 0.5),
+      size = 3.5, color = "grey20", fontface = "bold"
+    ) +
+    theme_minimal(base_family = "Helvetica") +
+    theme(
+      # fond gris englobant aussi la légende
+      plot.background  = element_rect(fill = "#F5F5F5", color = NA),
+      # zone des barres transparente
+      panel.background = element_rect(fill = NA, color = NA),
+      # légende sur fond transparent
+      legend.background = element_rect(fill = NA, color = NA),
+      legend.key        = element_rect(fill = NA, color = NA),
+      # suppression des lignes / axes inutiles
+      panel.grid       = element_blank(),
+      axis.title       = element_blank(),
+      axis.text.y      = element_blank(),
+      axis.ticks       = element_blank(),
+      axis.text.x      = element_text(face = "bold", size = 10),
+      # position de la légende
+      legend.position  = "right",
+      legend.title     = element_blank()
+    )
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  # Packages nécessaires
+  library(tidyverse)
+  
+  # Base de données
+  df <- tribble(
+    ~category,                      ~percent, ~zone,
+    "Élevage laitier et viande",     34,       "Zone de plaine",
+    "Polyculture-élevage",           17,       "Zone de plaine",
+    "Culture végétale",              49,       "Zone de plaine",
+    "Élevage laitier et viande",     58,       "Zone de montagne",
+    "Polyculture-élevage",           18,       "Zone de montagne",
+    "Culture végétale",              24,       "Zone de montagne"
+  )
+  
+  # Inverser l'ordre pour l'empilement
+  df$category <- factor(df$category, levels = c("Culture végétale", "Polyculture-élevage", "Élevage laitier et viande"))
+  
+  # Palette très douce et naturelle
+  palette_couleurs <- c(
+    "Culture végétale" = "#7BA05B",       # Vert sauge
+    "Polyculture-élevage" = "#C0C0C0",    # Gris clair perle
+    "Élevage laitier et viande" = "#A97457" # Brun doux
+  )
+  
+  # Graphique
+  ggplot(df, aes(x = zone, y = percent, fill = category)) +
+    geom_bar(stat = "identity", position = "stack") +
+    geom_text(aes(label = paste0(percent, "%")), 
+              position = position_stack(vjust = 0.5), 
+              size = 4, color = "white", fontface = "bold", family = "Helvetica") +
+    scale_fill_manual(values = palette_couleurs) +
+    theme_minimal(base_size = 14, base_family = "Helvetica") +
+    theme(
+      panel.background = element_rect(fill = "#fafafa", color = NA), # gris hyper léger
+      plot.background = element_rect(fill = "#fafafa", color = NA),
+      axis.title = element_blank(),        # Pas de titres axes
+      axis.text.y = element_blank(),        # Pas d'axe Y
+      axis.ticks = element_blank(),         # Pas de ticks
+      axis.line = element_blank(),          # Pas de bordure
+      plot.title = element_blank(),         # Pas de titre
+      legend.title = element_text(face = "bold", family = "Helvetica"),
+      legend.text = element_text(family = "Helvetica"),
+      axis.text.x = element_text(face = "bold", family = "Helvetica")
+    ) +
+    labs(
+      fill = "Activité agricole"
+    )
+  
+  
+  
+  
+  
+  
 
-# 3) Palette extraite de ta diapo
-cols <- c(
-  "Bovins Laitier"    = "#7DAFDB",
-  "Bovins Viande"     = "#D15F59",
-  "Ovins et Caprins"  = "#B9A3D5",
-  "Porcins"           = "#EEDD99",
-  "Mixte"             = "#9CC3A8",
-  "Cultures"          = "#CFA16A"
-)
-
-# 4) Construction du donut
-ggplot(df, aes(x = x, y = percent, fill = category)) +
-  geom_col(width = 1, color = "black") +
-  coord_polar(theta = "y") +
-  # limite extérieure x = 2.5 et intérieure x = 0.5 pour créer le trou
-  scale_x_continuous(limits = c(0.5, max(df$x) + 0.5), expand = c(0, 0)) +
-  scale_fill_manual(values = cols) +
-  theme_void() +
-  theme(legend.position = "right") +
-  labs(fill = "Catégorie")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#### Table comparaison utilisation parc ####
+#------------------------------------------#
+if (FALSE){
+  
+  
+  # ENTREE
+  
+  #Dossier contenant les sous dossier des chargement
+  case_flock_file = file.path(output_dir, "4. Chargements_Calcules")
+  #Dossier contenant les fichiers du tot de chargement
+  case_flock_alpage_file = file.path(case_flock_file,paste0(YEAR,"_",alpage))
+  
+  # Un .RDS par alpage contenant les charges journalières
+  
+  input_park_day_state_filtered_rds <- file.path(case_flock_alpage_file, paste0("by_park_day_and_state_transition_filtered_", YEAR,"_",alpage,".rds"))
+  
+  
+  
+  # SORTIE 
+  # Création du dossier de sortie des indicateur pour la visualistaion
+  output_visu_case <- file.path(output_dir, "5. Indicateurs_visualisation")
+  if (!dir.exists(output_visu_case)) {
+    dir.create(output_visu_case, recursive = TRUE)
+  }
+  # Création du sous-dossier Indicateur traitée : Espace paturé
+  output_table_parc_case <- file.path(output_visu_case, "Table_comparaison_parc")
+  if (!dir.exists( output_table_parc_case)) {
+    dir.create( output_table_parc_case, recursive = TRUE)
+  }
+  
+  output_table_png = file.path(output_table_parc_case, paste0("Table_comparaisons_parc_",alpage,".png"))
+  
+  
+  
+  
+  
+  # TABLE DE BASE 
+  
+  library(data.table)
+  
+  # Paramètres
+  years      <- c(2022, 2023, 2024)
+  pixel_size <- 10    # taille du pixel en mètres
+  results    <- vector("list", length(years))
+  
+  for (i in seq_along(years)) {
+    yr <- years[i]
+    
+    # chemins vers les RDS
+    base_dir   <- file.path(output_dir, "4. Chargements_Calcules", paste0(yr, "_", alpage))
+    rds_daily  <- file.path(
+      base_dir,
+      paste0("by_park_day_and_state_transition_filtered_", yr, "_", alpage, ".rds")
+    )
+    rds_total  <- file.path(
+      base_dir,
+      paste0("by_park_transition_filtered_", yr, "_", alpage, ".rds")
+    )
+    rds_map    <- file.path(
+      base_dir,
+      paste0("info_table_use_parc_", yr, "_", alpage, ".rds")
+    )
+    
+    # 1) Lecture des données
+    dt_daily <- as.data.table(readRDS(rds_daily))
+    dt_total <- as.data.table(readRDS(rds_total))
+    map_dt   <- as.data.table(readRDS(rds_map))[, .(parc, rename)]
+    
+    # 2) Définition de la zone : pixels où Charge > 10
+    zone <- dt_total[Charge > 10]
+    
+    # 3) Surface en hectares par parc (zone)
+    pix_cnt <- zone[
+      , .(n_pix = uniqueN(paste(x, y))), 
+      by = parc
+    ]
+    pix_cnt[, surface_ha := n_pix * pixel_size^2 / 10000]
+    
+    # 4) Nombre de jours passés par parc
+    days_cnt <- dt_daily[
+      , .(n_days = uniqueN(day)), 
+      by = parc
+    ]
+    
+    # 5) Médiane de la charge dans la zone, par parc
+    med_charge <- zone[
+      , .(median_charge = median(Charge, na.rm = TRUE)), 
+      by = parc
+    ]
+    
+    # 6) Assemblage des indicateurs
+    summary_dt <- merge(pix_cnt[, .(parc, surface_ha)], days_cnt,   by = "parc", all = TRUE)
+    summary_dt <- merge(summary_dt,       med_charge, by = "parc", all = TRUE)
+    summary_dt <- merge(summary_dt,       map_dt,     by = "parc", all.x = TRUE)
+    summary_dt[, `:=`(year = yr, alpage = alpage)]
+    
+    results[[i]] <- summary_dt
+  }
+  
+  # 7) Construction du tableau final
+  final_dt <- rbindlist(results, fill = TRUE)
+  setcolorder(final_dt, c("alpage", "rename", "year", "surface_ha", "n_days", "median_charge"))
+  
+  print(final_dt)
+  
+  # JOLIE TABLE 
+  
+  if (alpage == "Sanguiniere"){
+  
+   # À partir de `final_dt` issu de votre boucle (inchangé) :
+  # final_dt doit contenir au minimum :
+  #   parc, year, surface_ha, n_days, median_charge
+  
+  library(data.table)
+  library(tidyr)
+  library(dplyr)
+  library(knitr)
+  library(kableExtra)
+    
+  library(webshot2)
+  
+  # 1) Préparer le libellé final
+  dt <- copy(final_dt)
+  # si `rename` est NA, on prend `parc`
+  dt[, rename := ifelse(is.na(rename), parc, rename)]
+  # fusionner les deux premières périodes sous un même label
+  to_fuse <- c("parc_début-juillet_début-août",
+               " parc_mi-juin_début-août")
+  dt[rename %in% to_fuse, rename := "parc_mi-juin_début-août"]
+  
+  # 2) Agréger pour n’avoir qu’une ligne par (rename, year)
+  agg <- dt[, .(
+    surface_ha    = mean(surface_ha,    na.rm=TRUE),
+    n_days        = mean(n_days,        na.rm=TRUE),
+    median_charge = mean(median_charge, na.rm=TRUE)
+  ), by=.(rename, year)]
+  
+  # 3) Pivot en wide avec data.table::dcast (une colonne métrique×année)
+  wide <- dcast(
+    agg,
+    rename ~ year,
+    value.var = c("surface_ha","n_days","median_charge")
+  )
+  
+  # 4) Arrondir à 1 décimale
+  num_cols <- setdiff(names(wide),"rename")
+  wide[ , (num_cols) := lapply(.SD, round, 1), .SDcols = num_cols ]
+  
+  # 1) Ordre chronologique des parcs
+  ordre_parcs <- c(
+    "parc_mi-juin_début-août",
+    "parc_début-août_début-septembre",
+    "parc_début-septembre_mi-septembre"
+  )
+  wide[, rename := factor(rename, levels = ordre_parcs)]
+  setorder(wide, rename)
+  
+  # 2) Sous-colonnes = années par métrique (2022, 2023, 2024)
+  years       <- sort(unique(agg$year))
+  sub_headers <- rep(as.character(years), times = 3)
+  
+  # 3) Affichage final
+  library(kableExtra)
+  
+  years <- sort(unique(agg$year))
+  
+  # 1) Sous-colonnes : 2022, 2023, 2024 pour CHAQUE métrique
+  sub_headers <- rep(as.character(years), times = 3)
+  
+  wide %>%
+    rename(`Parc (période)` = rename) %>%
+    kable(
+      format    = "html",
+      col.names = c("Parc (période)", sub_headers),
+      align     = c("l", rep("c", length(sub_headers))),
+      caption   = paste0("Indicateurs par parc pour l’alpage ", alpage)
+    ) %>%
+    add_header_above(
+      c(
+        " " = 1,
+        "Surface utilisée (ha)" = length(years),
+        "Jours de présence"      = length(years),
+        "Chargement médian"      = length(years)
+      )
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width        = FALSE,
+      position          = "center",
+      font_size         = 14
+    ) %>%
+    row_spec(
+      0,
+      bold      = TRUE,
+      extra_css = "background-color:#e8e8e8; line-height:1.4;"
+    ) %>%
+    # zébrage personnalisé
+    row_spec(seq(1, nrow(wide), 2), extra_css = "background-color:#fafafa;") %>%
+    row_spec(seq(2, nrow(wide), 2), extra_css = "background-color:#ffffff;") %>%
+    # augmenter les paddings colonnes
+    column_spec(
+      1,
+      bold      = TRUE,
+      width     = "5cm",
+      extra_css = "padding: 12px 8px;"
+    ) %>%
+    column_spec(
+      2:(ncol(wide)),
+      width     = "2cm",
+      extra_css = "padding: 12px 6px;"
+    )
+  
+  
+  # 0) installer si besoin
+  
+  
+  library(kableExtra)
+  library(webshot2)
+  library(pagedown)
+  library(dplyr)
+  
+  # --- 1) Construire votre tableau kable avec kableExtra
+  tbl <- wide %>%
+    rename(`Parc (période)` = rename) %>%
+    kable(
+      format    = "html",
+      col.names = c("Parc (période)", rep(as.character(years), each = 3)),
+      align     = c("l", rep("c", length(years) * 3)),
+      caption   = paste0("Indicateurs par parc pour l’alpage ", alpage)
+    ) %>%
+    add_header_above(c(
+      " " = 1,
+      "Surface utilisée (ha)" = length(years),
+      "Jours de présence"      = length(years),
+      "Chargement médian"      = length(years)
+    )) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width       = FALSE,
+      position         = "center",
+      html_font        = "Arial",
+      font_size        = 14
+    )
+  
+  # --- 2) Sauvegarder un HTML auto-contenant
+  tmp_html <- tempfile(fileext = ".html")
+  save_kable(
+    tbl,
+    file           = tmp_html,
+    self_contained = TRUE
+  )
+  
+  # --- 3) Imprimer en PNG via Chrome headless
+  
+  webshot2::webshot(
+    url      = tmp_html,
+    file     = output_table_png,
+    selector = "body",        # capture tout le corps pour éviter le découpage
+    delay    = 0.5,           # temps pour que le CSS inline s’applique
+    zoom     = 2,             # double résolution
+    expand   = c(20,20,20,20),# marges supplémentaires
+    vwidth   = 2000,          # largeur de la fenêtre Chrome
+    vheight  = 600            # hauteur de la fenêtre Chrome
+  )
+  message("→ PNG généré ici : ", output_table_png)
+  message("→ Votre tableau a été exporté au format PNG : ", output_png)
+  
+  
+  
+  }
+  
+  if (alpage == "Cayolle") {
+    
+    # 1) Préparation et filtrage sur 2023/2024
+    dt <- copy(final_dt)
+    dt[, rename := ifelse(is.na(rename), parc, rename)]
+    dt <- dt[year %in% c(2023, 2024)]
+    
+    # 2) Mapping vers 5 périodes canoniques (inchangé)
+    period_map <- list(
+      "parc_mi-juin_début-juillet"        = "parc_mi-juin_début-juillet",
+      "parc_début-juillet_mi-juillet"     = c(
+        "parc_05-juil._07-juil.",
+        "parc_08-juil._13-juil.",
+        "parc_10-juil._15-juil.",   # 2023
+        "parc_10-juil._16-juil."    # 2024
+      ),
+      "parc_mi-juillet_début-août"        = c(
+        "parc_mi-juillet_début-août",
+        "parc_mi-juillet_fin-juillet" # 2024
+      ),
+      "parc_début-août_début-septembre"   = "parc_début-août_début-septembre",
+      "parc_début-septembre_fin-septembre"= c(
+        "parc_début-septembre_mi-septembre",
+        "parc_début-septembre_fin-septembre"
+      )
+    )
+    for (canon in names(period_map)) {
+      dt[rename %in% period_map[[canon]], rename := canon]
+    }
+    dt <- dt[rename %in% names(period_map)]
+    
+    # 3) Agrégation
+    agg <- dt[, .(
+      surface_ha    = sum(surface_ha,    na.rm = TRUE),
+      n_days        = sum(n_days,        na.rm = TRUE),
+      median_charge = median(median_charge, na.rm = TRUE)
+    ), by = .(rename, year)]
+    
+    # 4) Pivot en wide
+    wide <- dcast(
+      agg,
+      rename ~ year,
+      value.var = c("surface_ha","n_days","median_charge")
+    )
+    # Arrondi
+    num_cols <- setdiff(names(wide), "rename")
+    wide[, (num_cols) := lapply(.SD, round, 1), .SDcols = num_cols]
+    
+    # 5) Tri chronologique des périodes
+    chrono <- names(period_map)
+    wide[, rename := factor(rename, levels = chrono)]
+    setorder(wide, rename)
+    
+    # 6) Construire sub_headers CORRECTEMENT
+    years       <- c(2023, 2024)
+    sub_headers <- rep(as.character(years), times = 3)
+    # => "2023","2024","2023","2024","2023","2024"
+    
+    # 7) Générer le HTML kable
+    tbl_html <- wide %>%
+      dplyr::rename(`Parc (période)` = rename) %>%
+      kable(
+        format     = "html",
+        caption    = paste0("Indicateurs par parc pour l’alpage ", alpage),
+        col.names  = c("Parc (période)", sub_headers),
+        align      = c("l", rep("c", length(sub_headers))),
+        table.attr = 'style="width:100%;max-width:1400px;table-layout:auto;"'
+      ) %>%
+      add_header_above(c(
+        " " = 1,
+        "Surface utilisée (ha)" = length(years),
+        "Jours de présence"     = length(years),
+        "Chargement médian"     = length(years)
+      )) %>%
+      kable_styling(
+        bootstrap_options = c("striped","hover","condensed"),
+        full_width        = FALSE,
+        position          = "center",
+        html_font         = "Arial",
+        font_size         = 14
+      ) %>%
+      row_spec(0, bold = TRUE, extra_css = "background-color:#e8e8e8;") %>%
+      row_spec(seq(1, nrow(wide), 2), extra_css = "background-color:#fafafa;") %>%
+      row_spec(seq(2, nrow(wide), 2), extra_css = "background-color:#ffffff;") %>%
+      column_spec(1, bold=TRUE, width="5cm",   extra_css="padding:12px 8px;") %>%
+      column_spec(2:(ncol(wide)), width="2cm", extra_css="padding:12px 6px;")
+    
+    # 8) Export PNG via webshot2
+    tmp_html <- tempfile(fileext = ".html")
+    save_kable(tbl_html, tmp_html, self_contained = TRUE)
+    webshot2::webshot(
+      url      = tmp_html,
+      file     = output_table_png,
+      selector = "table",
+      delay    = 0.5,
+      zoom     = 2,
+      vwidth   = 1400,
+      vheight  = 600,
+      expand   = c(10,10,10,10)
+    )
+    
+    message("→ PNG créé : ", output_table_png)
+  }
+  
+  if (alpage == "Viso") {
+    
+    # 1) Préparation & filtrage
+    dt <- copy(final_dt)
+    dt[, rename := ifelse(is.na(rename), parc, rename)]
+    dt <- dt[year %in% c(2022, 2023, 2024)]
+    
+    # 2) Mapping vers 4 périodes canoniques
+    period_map <- list(
+      # mi-juin ↝ mi-juillet
+      "parc_mi-juin_mi-juillet" = c(
+        "parc_mi-juin_mi-juillet",    # 2022
+        "parc_début-juin_début-juillet", # 2023
+        "parc_mi-juin_mi-juillet"     # 2024
+      ),
+      # mi-juillet ↝ mi-août
+      "parc_mi-juillet_mi-août" = c(
+        "parc_mi-juillet_mi-août",      # 2022
+        "parc_début-juillet_début-août",# 2023
+        "parc_mi-juillet_mi-août"       # 2024
+      ),
+      # mi-août ↝ début-septembre
+      "parc_mi-août_début-septembre" = c(
+        "parc_début-août_début-septembre", # 2022
+        "parc_début-août_mi-août",         # 2023
+        "parc_début-août_début-septembre"  # 2024
+      ),
+      # début-septembre ↝ début-octobre
+      "parc_début-septembre_début-octobre" = c(
+        "parc_début-septembre_début-octobre", # 2022
+        "parc_début-septembre_début-octobre", # 2023
+        "parc_20-sept._20-sept.",             # 2023
+        "parc_début-septembre_début-octobre", # 2024
+        "parc_mi-septembre_début-octobre"     # 2024
+      )
+    )
+    
+    for (canon in names(period_map)) {
+      dt[rename %in% period_map[[canon]], rename := canon]
+    }
+    dt <- dt[rename %in% names(period_map)]
+    
+    # 3) Agrégation
+    agg <- dt[, .(
+      surface_ha    = sum(surface_ha,    na.rm = TRUE),
+      n_days        = sum(n_days,        na.rm = TRUE),
+      median_charge = median(median_charge, na.rm = TRUE)
+    ), by = .(rename, year)]
+    
+    # 4) Pivot “wide”
+    wide <- dcast(
+      agg,
+      rename ~ year,
+      value.var = c("surface_ha","n_days","median_charge")
+    )
+    # Arrondi à 1 décimale
+    num_cols <- setdiff(names(wide), "rename")
+    wide[, (num_cols) := lapply(.SD, round, 1), .SDcols = num_cols]
+    
+    # 5) Tri chronologique des périodes
+    chrono <- names(period_map)
+    wide[, rename := factor(rename, levels = chrono)]
+    setorder(wide, rename)
+    
+    # 6) Préparation des sous-en-têtes (3 années × 3 indicateurs)
+    years       <- c(2022, 2023, 2024)
+    sub_headers <- rep(as.character(years), times = 3)
+    # => "2022","2023","2024","2022","2023","2024","2022","2023","2024"
+    
+    # 7) Génération du tableau HTML
+    tbl_html <- wide %>%
+      dplyr::rename(`Parc (période)` = rename) %>%
+      kable(
+        format     = "html",
+        caption    = paste0("Indicateurs par parc pour l’alpage ", alpage),
+        col.names  = c("Parc (période)", sub_headers),
+        align      = c("l", rep("c", length(sub_headers))),
+        table.attr = 'style="width:100%;max-width:1400px;table-layout:auto;"'
+      ) %>%
+      add_header_above(c(
+        " " = 1,
+        "Surface utilisée (ha)" = length(years),
+        "Jours de présence"      = length(years),
+        "Chargement médian"      = length(years)
+      )) %>%
+      kable_styling(
+        bootstrap_options = c("striped","hover","condensed"),
+        full_width        = FALSE,
+        position          = "center",
+        html_font         = "Arial",
+        font_size         = 14
+      ) %>%
+      row_spec(0, bold = TRUE, extra_css = "background-color:#e8e8e8;") %>%
+      row_spec(seq(1, nrow(wide), 2), extra_css = "background-color:#fafafa;") %>%
+      row_spec(seq(2, nrow(wide), 2), extra_css = "background-color:#ffffff;") %>%
+      column_spec(1, bold=TRUE, width="5cm",   extra_css="padding:12px 8px;") %>%
+      column_spec(2:(ncol(wide)), width="2cm", extra_css="padding:12px 6px;")
+    
+    # 8) Export en PNG via webshot2
+    tmp_html <- tempfile(fileext = ".html")
+    save_kable(tbl_html, tmp_html, self_contained = TRUE)
+    webshot2::webshot(
+      url      = tmp_html,
+      file     = output_table_png,
+      selector = "table",
+      delay    = 0.5,
+      zoom     = 2,
+      vwidth   = 1400,
+      vheight  = 600,
+      expand   = c(10,10,10,10)
+    )
+    
+    message("→ PNG créé : ", output_table_png)
+  }
+  
+  

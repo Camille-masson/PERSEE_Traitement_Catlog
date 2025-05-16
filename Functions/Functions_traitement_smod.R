@@ -598,30 +598,103 @@ generate_loading_data_by_quinzaine <- function(SMOD_tif_file, MNT_tif_file, char
   return(df_final)
 }
 
+# --- Functions_traitement_smod.R ---
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+generate_loading_data_by_parc <- function(
+    SMOD_tif_file,      # chemin du Fsca médian (10 ans)
+    MNT_tif_file,       # chemin du MNT de l'alpage
+    chargement_case,    # dossier parent "…/Taux_chargement"
+    years,              # vecteur d'années, ex. c(2023,2024)
+    alpage,             # nom de l'alpage, ex. "Cayolle"
+    output_rds_file,    # chemin complet du .rds de sortie
+    threshold = 10,     # seuil de présence
+    res_raster = 10     # résolution cible (m)
+) {
+  library(raster)
+  library(dplyr)
+  
+  # 1) Préparer le template altitude + FSCA
+  r_fsca <- raster(SMOD_tif_file)
+  r_dem  <- raster(MNT_tif_file)
+  if (!compareCRS(r_fsca, r_dem)) {
+    message("CRS différents, reprojection de r_fsca…")
+    r_fsca <- projectRaster(r_fsca, crs = crs(r_dem))
+  }
+  # Agrégation du DEM si résolution > cible
+  fact <- round(res(r_dem)[1] / res_raster)
+  if (fact > 1) {
+    message("Agrégation du DEM (facteur = ", fact, ")")
+    r_dem <- aggregate(r_dem, fact = fact, fun = mean)
+  }
+  # Emprise commune et recadrage
+  ce <- intersect(extent(r_dem), extent(r_fsca))
+  if (is.null(ce)) stop("Pas d'emprise commune entre DEM et FSCA.")
+  r_dem_crop  <- crop(r_dem, ce)
+  r_fsca_crop <- crop(r_fsca, ce)
+  # Rééchantillonnage FSCA sur le DEM agrégé
+  r_fsca_res <- resample(r_fsca_crop, r_dem_crop, method = "bilinear")
+  
+  # Data.frame de base : x, y, altitude, FSCA
+  merged <- stack(r_dem_crop, r_fsca_res)
+  df_base <- as.data.frame(rasterToPoints(merged))
+  # on écrase les noms de colonnes 3 et 4
+  names(df_base)[3:4] <- c("altitude", "FSCA")
+  df_base <- df_base %>% filter(!is.na(altitude), !is.na(FSCA))
+  
+  # 2) Boucle sur les années et les rasters "Parc_<YEAR>"
+  df_parc <- NULL
+  for (yr in years) {
+    message("Traitement de l'année ", yr)
+    # dossier alpage: ex. ".../Taux_chargement/2023_Cayolle"
+    case_alpage <- file.path(chargement_case, paste0(yr, "_", alpage))
+    if (!dir.exists(case_alpage)) {
+      message("  Dossier introuvable : ", case_alpage); next
+    }
+    # sous-dossier parc: ex. ".../2023_Cayolle/Parc_2023"
+    parc_dir <- file.path(case_alpage, paste0("Parc_", yr))
+    if (!dir.exists(parc_dir)) {
+      message("  Dossier introuvable : ", parc_dir); next
+    }
+    # lister tous les .tif
+    tif_list <- list.files(parc_dir, pattern = "\\.tif$", full.names = TRUE)
+    if (length(tif_list) == 0) {
+      message("  Aucun .tif dans : ", parc_dir); next
+    }
+    # pour chaque raster de parc
+    for (fp in tif_list) {
+      parc_nm <- tools::file_path_sans_ext(basename(fp))
+      message("   • Parc = ", parc_nm)
+      r_p <- raster(fp)
+      if (!compareCRS(r_p, r_dem_crop)) {
+        r_p <- projectRaster(r_p, crs = crs(r_dem_crop))
+      }
+      r_p_res <- resample(r_p, r_dem_crop, method = "bilinear")
+      df_p <- as.data.frame(rasterToPoints(r_p_res))
+      if (nrow(df_p) == 0) next
+      # nommage
+      load_col <- paste0("load_", yr, "_", parc_nm)
+      pres_col <- paste0("presence_", yr, "_", parc_nm)
+      names(df_p)[3] <- load_col
+      df_p <- df_p %>% mutate(!!pres_col := ifelse(.data[[load_col]] > threshold, 1, 0))
+      # fusion progressive
+      df_parc <- if (is.null(df_parc)) df_p else
+        merge(df_parc, df_p, by = c("x","y"), all = TRUE)
+    }
+  }
+  
+  # 3) Fusion finale et sauvegarde
+  if (is.null(df_parc)) {
+    warning("Aucun raster de parc trouvé → on renvoie altitude+FSCA seul.")
+    df_final <- df_base
+  } else {
+    df_final <- merge(df_base, df_parc, by = c("x","y"), all.x = TRUE)
+  }
+  df_final$year_range <- paste0(min(years), "-", max(years))
+  
+  saveRDS(df_final, file = output_rds_file)
+  message("Résultat sauvegardé dans : ", output_rds_file)
+  return(df_final)
+}
 
 
 
