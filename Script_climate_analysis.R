@@ -20,8 +20,8 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 # Définition de l'année d'analyse
 YEAR <- 2023
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Sanguiniere"
-alpages <- "Viso"
+alpage <- "Rouanette"
+alpages <- "Rouanette"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -482,7 +482,140 @@ if (FALSE) {
   
   
   
+#### 4. Analyse de la Phénologie ####
+#-----------------------------------#
+
+
+
+
+if (TRUE){
   
+  ### 4.1 Préparation du jeu de données phéno ###
+  #---------------------------------------------#
+  
+  
+  # Description : 
+  # Préparation du jeu pour la phénologie 
+  # Fonction 1, correspond au jeu de données pour obtenir le pouventage du troupeau 
+  # présent par état de végétation (stade phéno : pousse, maturé, dépérissant, senescent)
+  # Nécéssite : 
+  # - Le rds du chargement par jour (part 4, script 1)
+  # - La phénologie : IRG (catégorisé selon 4 classe : 1 = pousse, 2 = plateau,
+  #   3 = dépérissement, 4 = sénéssence) par jour et pixel de 10 mètres
+  
+  
+  # ENTREE
+  #Dossier contenant les sous dossier des chargement
+  case_flock_file = file.path(output_dir, "4. Chargements_Calcules")
+  #Dossier contenant les fichiers du tot de chargement
+  case_flock_alpage_file = file.path(case_flock_file,paste0(YEAR,"_",alpage))
+  
+  # Un .RDS par alpage contenant les charges journalières
+  daily_rds_file = file.path(case_flock_alpage_file, paste0("by_day_and_state_",YEAR,"_",alpage,".rds"))
+  
+  
+  #Dossier de phénologie 
+  case_phenologie = file.path(raster_dir, "Phenologie")
+  if (!dir.exists(case_phenologie)) {
+    dir.create(case_phenologie, recursive = TRUE)
+  }
+  
+  # Un .TIF de l'IRG catégorisé par jour et pixel de 10 mètre
+  pheno_tif_file = file.path(case_phenologie, paste0("Phenology_Phase_",alpage,"_",YEAR,".tif"))
+  
+  # Dossiers de sortie
+  out_dir <- file.path(output_dir, "9. Analysis_Phenology", "data_phenology")
+  dir.create(out_dir, recursive=TRUE, showWarnings=FALSE)
+  
+  out_files <- list(
+    pousse       = file.path(out_dir, paste0("Pourcentage_presence_stade_croissance_",   alpage,"_",YEAR,".tif")),
+    plateau      = file.path(out_dir, paste0("Pourcentage_presence_stade_plateau_",      alpage,"_",YEAR,".tif")),
+    deperiss    = file.path(out_dir, paste0("Pourcentage_presence_stade_deperiss_",    alpage,"_",YEAR,".tif")),
+    senescence   = file.path(out_dir, paste0("Pourcentage_presence_stade_senescence_",  alpage,"_",YEAR,".tif"))
+  )
+  
+  # —————————————————————————————————————————————————————————————
+  # 1) Lecture et préparation des présences journalières
+  # —————————————————————————————————————————————————————————————
+  df <- readRDS(daily_rds_file)
+  
+  pres_df <- df %>%
+    group_by(x, y, day) %>%
+    summarise(totalCharge = sum(Charge, na.rm = TRUE), .groups = "drop") %>%
+    mutate(present = as.integer(totalCharge > 1))
+  
+  # —————————————————————————————————————————————————————————————
+  # 2) Chargement du raster de phénologie
+  # —————————————————————————————————————————————————————————————
+  pheno <- rast(pheno_tif_file)
+  crs(pheno) <- "EPSG:2154"
+  
+  # extraire les DOY depuis "Phase_DOYXXX"
+  doys <- as.integer(sub("Phase_DOY", "", names(pheno)))
+  
+  # —————————————————————————————————————————————————————————————
+  # 3) Rasterisation ALIGNÉE : un layer/jour pour la présence
+  # —————————————————————————————————————————————————————————————
+  # On crée un cube 0/1 calé sur pheno
+  base0 <- pheno[[1]] * 0
+  pres_stack <- rep(base0, length(doys))
+  names(pres_stack) <- paste0("day", doys)
+  
+  # Peupler avec les présences
+  for(i in seq_along(doys)) {
+    d <- doys[i]
+    sub <- pres_df %>% filter(day == d)
+    if(nrow(sub)==0) next
+    vsub <- vect(sub, geom=c("x","y"), crs=crs(pheno))
+    # rasterize sur la couche pheno[[i]] pour garder l'alignement
+    r <- rasterize(vsub,
+                   pheno[[i]],
+                   field="present",
+                   fun="max",
+                   background=0)
+    pres_stack[[i]] <- r
+  }
+  
+  # —————————————————————————————————————————————————————————————
+  # 4) Comptages et % par classe phénologique
+  # —————————————————————————————————————————————————————————————
+  classes <- c(pousse=1, plateau=2, deperiss=3, senescence=4)
+  
+  # (a) compter jours de présence PAR CLASSE
+  counts <- lapply(classes, function(cl) {
+    mask_cl <- pheno == cl         # binaire par jour, par pixel
+    # multiplication couche à couche → 1 si (présent ET good class), sinon 0
+    cst <- sum(mask_cl * pres_stack, na.rm=TRUE)
+    names(cst) <- paste0("count_cl",cl)
+    cst
+  })
+  
+  # (b) total de jours présent (toutes classes)
+  total_pres <- sum(pres_stack, na.rm=TRUE)
+  
+  # (c) % par classe = 100 * count_cl / total_pres
+  percs <- mapply(function(r_count, nm){
+    p <- (r_count / total_pres) * 100
+    p[total_pres == 0] <- NA
+    names(p) <- nm
+    p
+  }, counts, names(counts), SIMPLIFY=FALSE)
+  
+  # —————————————————————————————————————————————————————————————
+  # 5) Écriture des TIFs finaux
+  # —————————————————————————————————————————————————————————————
+  for(nm in names(percs)) {
+    writeRaster(percs[[nm]],
+                filename  = out_files[[nm]],
+                overwrite = TRUE)
+  }
+  
+  # (Optionnel) empiler et sauver tout en RDS
+  perc_stack <- rast(unname(out_files))
+  saveRDS(perc_stack,
+          file = file.path(out_dir, paste0("Pourcentage_presence_par_stade_", alpage, "_", YEAR, ".rds")))
+
+
   
   
   

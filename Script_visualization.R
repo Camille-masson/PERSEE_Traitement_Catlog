@@ -9,11 +9,11 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
+YEAR <- 2023
 YEARS <- c(2022, 2023, 2024)
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Viso"
-alpages <- c("Sanguiniere","Cayolle", "Viso")
+alpage <- "Rouanette"
+alpages <- "Rouanette"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -873,7 +873,7 @@ if (FALSE){
   for(alpage in alpages){
   #ENTREE
   # Un dossier contenant carte de végétation
-  carto_file = file.path(raster_dir, "Classifications_fusion_ColorIndexed_sc1_landforms_mnh.tif")
+  carto_file = file.path(raster_dir, "Cartographie_v4_decoupe.tif")
   
   # ENTREE
   #Dossier contenant les sous dossier des chargement
@@ -916,11 +916,11 @@ if (FALSE){
   
   #CODE 
   
-  if (FALSE){
+  if (TRUE){
   load_by_veget(alpage, alpage_info_file, UP_file, daily_rds_prefix, load_veget_rds)
   }
   
-  if (FALSE){
+  if (TRUE){
     gif_plot_load_by_veget_day(load_veget_rds, load_veget_day_gif, delay_miliseconds = 49 )
   }
   
