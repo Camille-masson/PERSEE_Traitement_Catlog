@@ -9,11 +9,11 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2023
+YEAR <- 2024
 YEARS <- c(2022, 2023, 2024)
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Rouanette"
-alpages <- "Rouanette"
+alpage <- "Cayolle"
+alpages <- "Cayolle"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -642,7 +642,7 @@ if (FALSE){
   
   #ENTREE
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
-  case_GIF_file = file.path(raster_dir, "Image_GIF")
+  case_GIF_file = file.path(raster_dir, "Image_GIF_greenwave")
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
@@ -657,7 +657,7 @@ if (FALSE){
   }
   
   # Un .GIF contenant les données de trajectoires catégorisées par comportement et collier
-  output_gif = file.path(output_GIF_case, "Gif_Cayolle_quinz_2022.gif")
+  output_gif = file.path(output_GIF_case, "Gif_Cayolle_greenwave_2022.gif")
   
   # CODE
   
@@ -666,7 +666,7 @@ if (FALSE){
   }
   
   if(TRUE){
-  create_gif_from_images_day_bis (case_GIF_file,output_gif,file_pattern = "Carte_cayolle.*\\.(png|jpg)$",delay_seconds = 0.5)
+  create_gif_from_images_day_bis (case_GIF_file,output_gif,file_pattern = "Band.*\\.(png|jpg)$",delay_seconds = 0.5)
   }
   
  
@@ -709,158 +709,100 @@ if (FALSE){
   # Un .GIF contenant les données de trajectoires catégorisées par comportement et collier
   plot_Dist_Deniv_jpg = file.path(output_dit_deniv_case, paste0("plot_dist_denic_",YEAR,"_",alpage,".jpeg"))
   
-  
-  
-  data = read.csv(file = distance_csv_file, sep = ",")
-  
-  
-  library(ggplot2)
-  library(scales)
-  
-  library(ggplot2)
-  
-  # Supposons que vos données s'appellent 'data' et contiennent :
-  # data$date, data$distance, data$denivelation
-  # Assurez-vous que data$date est bien de type Date
-  # data$date <- as.Date(data$date, format = "%Y-%m-%d")
-  
-  library(ggplot2)
   library(dplyr)
-  
-  # Assurez-vous que data$date est bien au format Date et qu'il n'y a pas de NA
-  # data$date <- as.Date(data$date, format = "%Y-%m-%d")
-  
-  # Filtrer les dates sans valeur (distance ou dénivelé manquants)
-  data_filtered <- data %>%
-    filter(!is.na(distance), !is.na(denivelation))
-  
-  # Déterminer la plage de dates valides
-  x_min <- min(data_filtered$date)
-  x_max <- max(data_filtered$date)
-  
-  # Calcul d'un ratio pour superposer le dénivelé (axe de droite) sur l'échelle de la distance (axe de gauche)
-  ratio <- max(data_filtered$distance, na.rm = TRUE) / max(data_filtered$denivelation, na.rm = TRUE)
-  
-  ggplot(data_filtered, aes(x = date)) +
-    # Barres pour la distance (axe de gauche)
-    geom_col(aes(y = distance), fill = "steelblue", alpha = 0.7) +
-    
-    # Courbe lissée (smooth) pour le dénivelé, sans la courbe brute
-    geom_smooth(
-      aes(y = denivelation * ratio),
-      method = "loess",
-      se = FALSE,        # pas de bande d'incertitude
-      color = "red",
-      size = 1,
-      span = 0.2         # ajustez ce paramètre pour un lissage plus ou moins prononcé
-    ) +
-    
-    # Axe Y principal (distance) + axe Y secondaire (dénivelé)
-    scale_y_continuous(
-      name = "Distance (m)",
-      # Ajout de lignes horizontales pour les graduations
-      # (on s'en occupera via le thème ci-dessous)
-      sec.axis = sec_axis(
-        ~ . / ratio,
-        name = "Dénivelé (m)"
-      )
-    ) +
-    
-    # Axe X : on limite la plage aux dates filtrées
-    scale_x_date(
-      limits = c(x_min, x_max),
-      date_breaks = "1 day",
-      date_labels = "%d/%m"
-    ) +
-    
-    # Titres et légendes
-    labs(
-      x = "Date",
-      title = "Distance et Dénivelé quotidiens"
-    ) +
-    
-    # Thème plus épuré (classique) et personnalisation
-    theme_classic() +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
-      axis.text.y = element_text(size = 9),
-      
-      # Ajouter des lignes horizontales pour les graduations Y
-      panel.grid.major.y = element_line(color = "gray80"),
-      panel.grid.minor.y = element_line(color = "gray90"),
-      
-      # Supprimer (ou laisser) les lignes verticales
-      panel.grid.major.x = element_blank(),
-      panel.grid.minor.x = element_blank()
+  library(purrr)
+  library(ggplot2)
+  library(patchwork)
+  data <- read.csv(distance_csv_file)
+  # 0) Préparation des données + normalisation de 0 à 1
+  data2 <- data %>%
+    arrange(date) %>%
+    mutate(
+      date      = as.Date(date),
+      fill_dist = (distance - min(distance)) /
+        (max(distance) - min(distance)),
+      fill_deniv= (denivelation - min(denivelation)) /
+        (max(denivelation) - min(denivelation))
     )
   
-  
-  library(ggplot2)
-  library(dplyr)
-  
-  # 1) Filtrer les données pour retirer les NA
-  data_filtered <- data %>%
-    filter(!is.na(distance), !is.na(denivelation))
-  
-  # Vérifier la plage réelle de dates
-  print(range(data_filtered$date))
-  
-  # 2) Calcul du ratio pour superposer le dénivelé (axe de droite)
-  ratio <- max(data_filtered$distance, na.rm = TRUE) / max(data_filtered$denivelation, na.rm = TRUE)
-  
-  # 3) Graphique
-  ggplot(data_filtered, aes(x = date)) +
-    
-    geom_col(
-      aes(y = distance), 
-      fill = "lightsteelblue2",   # Couleur de remplissage
-      alpha = 0.7,         # Transparence (1 = opaque)
-      color = "black",   # Couleur de la bordure
-      size = 0.5         # Épaisseur de la bordure
-    ) +
-    
-    # Courbe brute pour le dénivelé
-    geom_line(aes(y = denivelation * ratio), color = "grey18", size = 1) +
-    
-    # Définition des axes Y
-    scale_y_continuous(
-      name = "Distance (m)",
-      sec.axis = sec_axis(
-        ~ . / ratio,
-        name = "Dénivelé (m)"
+  # 1) Fonction pour générer de vrais trapèzes entre jours i et i+1
+  make_sloped_traps <- function(df, xvar, yvar, fillvar) {
+    map_dfr(seq_len(nrow(df) - 1), function(i) {
+      tibble(
+        id   = i,
+        x    = c(df[[xvar]][i],   df[[xvar]][i+1],
+                 df[[xvar]][i+1], df[[xvar]][i]  ),
+        y    = c(0,               0,
+                 df[[yvar]][i+1], df[[yvar]][i]),
+        fill = (df[[fillvar]][i] + df[[fillvar]][i+1]) / 2
       )
+    })
+  }
+  
+  traps_dist  <- make_sloped_traps(data2, "date", "distance",     "fill_dist")
+  traps_deniv <- make_sloped_traps(data2, "date", "denivelation", "fill_deniv")
+  
+  # 2) Palette douce et thème minimal
+  my_pal  <- c("#00441b", "#41ab5d", "#fed976", "#cb181d")
+  th_base <- theme_classic(base_family = "Helvetica", base_size = 14) +
+    theme(panel.grid = element_blank(),
+          plot.title = element_text(face = "bold", hjust = 0))
+  
+  # 3) Profil Distance avec trapèzes inclinés
+  p_dist <- ggplot() +
+    geom_polygon(
+      data = traps_dist,
+      aes(x = x, y = y, group = id, fill = fill),
+      color = NA
     ) +
-    
-    # Définition de l'axe X (dates)
-    # - expand = c(0,0) pour ne pas ajouter de marge avant/après
-    # - date_breaks = "1 day" si vous tenez vraiment à voir chaque jour
-    scale_x_date(
-      date_labels = "%d/%m",
-      date_breaks = "1 day",
-      expand = c(0, 0)
+    geom_line(
+      data = data2,
+      aes(x = date, y = distance),
+      color = "black", size = 0.8
     ) +
-    
-    # Titres
-    labs(
-      x = "Date",
-      title = "Distance et dénivelé quotidiens"
+    scale_fill_gradientn(colors = my_pal, limits = c(0,1), guide = "none") +
+    scale_x_date(expand = c(0,0), date_breaks = "1 month", date_labels = "%B") +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(title = "Distance quotidienne", y = "Distance (m)", x = NULL) +
+    th_base
+  
+  # 4) Profil Dénivelé avec trapèzes inclinés
+  p_deniv <- ggplot() +
+    geom_polygon(
+      data = traps_deniv,
+      aes(x = x, y = y, group = id, fill = fill),
+      color = NA
     ) +
-    
-    # Thème épuré + lignes horizontales
-    theme_classic() +
-    theme(
-      plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
-      axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-      axis.text.y = element_text(size = 12),
-      # Lignes horizontales pour les graduations Y
-      panel.grid.major.y = element_line(color = "gray80"),
-      panel.grid.minor.y = element_line(color = "gray90"),
-      panel.grid.major.x = element_blank(),
-      panel.grid.minor.x = element_blank()
-    )
+    geom_line(
+      data = data2,
+      aes(x = date, y = denivelation),
+      color = "black", size = 0.8
+    ) +
+    scale_fill_gradientn(colors = my_pal, limits = c(0,1), guide = "none") +
+    scale_x_date(expand = c(0,0), date_breaks = "1 month", date_labels = "%B") +
+    scale_y_continuous(expand = c(0,0)) +
+    labs(title = "Dénivelé quotidien", y = "Dénivelé (m)", x = "Date") +
+    th_base
+  
+  # 5) Empilage vertical
+  print(p_dist / p_deniv + plot_layout(heights = c(1,1)))
   
   
+  
+  combined <- p_dist / p_deniv + plot_layout(heights = c(1,1))
+  
+  # Affichage à l’écran (optionnel)
+  print(combined)
+  
+  # Enregistrement sur disque
+  ggsave(
+    filename = plot_Dist_Deniv_jpg,
+    plot     = combined,
+    width    = 12,      # en pouces
+    height   = 8,       # en pouces
+    dpi      = 300,
+    units    = "in"
+  )
   
 }
 
@@ -873,7 +815,7 @@ if (FALSE){
   for(alpage in alpages){
   #ENTREE
   # Un dossier contenant carte de végétation
-  carto_file = file.path(raster_dir, "Cartographie_v4_decoupe.tif")
+  carto_file = file.path(raster_dir, "Classifications_fusion_ColorIndexed_sc1_landforms_mnh.tif")
   
   # ENTREE
   #Dossier contenant les sous dossier des chargement
@@ -926,6 +868,571 @@ if (FALSE){
   
   
   }
+  
+  
+  library(dplyr)
+  library(ggplot2)
+  
+  # Fonction : median_load_by_habitat_bareh()
+  # --------------------------------------------------------------
+  # Arguments :
+  #   - load_veget_rds : chemin vers le fichier RDS (colonnes : day, vegetation_type, charge_sum)
+  #   - output_bar_png  : chemin complet (avec .png) pour sauvegarder le barplot horizontal
+  #
+  # Cette fonction :
+  #   1. Lit le RDS et exclut toute ligne où vegetation_type est NA.
+  #   2. Calcule la médiane de charge_sum par habitat.
+  #   3. Ordre les habitats par médiane décroissante.
+  #   4. Trace un barplot horizontal (geom_col + coord_flip).
+  #   5. Applique votre palette de couleurs initiale.
+  #   6. Enregistre le résultat dans un PNG.
+  # --------------------------------------------------------------
+  
+  library(dplyr)
+  library(ggplot2)
+  
+  # Fonction : mean_load_by_habitat_bareh()
+  # -------------------------------------------------------------
+  # Arguments :
+  #   - load_veget_rds : chemin vers le RDS contenant (day, vegetation_type, charge_sum)
+  #   - output_bar_png  : chemin complet (avec extension .png) pour sauvegarder le barplot
+  #
+  # Cette fonction :
+  #   1. Lit le RDS et exclut les lignes où vegetation_type est NA.
+  #   2. Calcule la charge moyenne par habitat.
+  #   3. Trie les habitats par charge moyenne décroissante.
+  #   4. Trace un barplot horizontal, sans contour, avec une palette soignée.
+  #   5. Enregistre le résultat au format PNG.
+  # -------------------------------------------------------------
+  
+  library(dplyr)
+  library(ggplot2)
+  library(scales)   # pour formatter les axes (comma)
+  
+  # =============================================================================
+  # Fonction : mean_load_by_habitat_bareh()
+  # =============================================================================
+  # Cette fonction :
+  #   • Lit un RDS comportant au moins trois colonnes :
+  #       - day (entier, non utilisé ici)
+  #       - vegetation_type (type d’habitat, caractère/facteur)
+  #       - charge_sum (charge journalière, numérique)
+  #   • Exclut toute ligne où vegetation_type est NA
+  #   • Calcule la charge moyenne par habitat
+  #   • Trie du plus grand au plus petit
+  #   • Trace un barplot horizontal épuré sans contours, sans grille superflue
+  #   • Enregistre le résultat dans un PNG
+  #
+  # Arguments :
+  #   - load_veget_rds : chemin complet vers le fichier RDS (ex. "…/charge_by_habitat_day_2022_Cayolle.rds")
+  #   - output_bar_png  : chemin complet du PNG de sortie (ex. "…/Charge_moyenne_par_habitat_2022_Cayolle.png")
+  # =============================================================================
+  
+  library(dplyr)
+  library(ggplot2)
+  library(scales)
+  
+  # =============================================================================
+  # Fonction : mean_load_by_habitat_bareh()
+  # =============================================================================
+  # - load_veget_rds : chemin vers le RDS contenant (day, vegetation_type, charge_sum)
+  # - output_bar_png  : chemin complet (avec .png) pour sauvegarder le barplot
+  #
+  # Modifications :
+  #   1) plus d’étiquettes numériques au bout des barres
+  #   2) barres plus épaisses (width = 0.8)
+  #   3) tri ASCENDANT, avec la plus grande moyenne en haut
+  # =============================================================================
+  
+  mean_load_by_habitat_bareh <- function(load_veget_rds, output_bar_png) {
+    # 1) Lecture des données
+    df <- readRDS(load_veget_rds)
+    
+    # 2) Exclure les NA dans vegetation_type
+    df <- df %>% filter(!is.na(vegetation_type))
+    
+    # 3) Calcul de la charge moyenne par habitat
+    df_mean <- df %>%
+      group_by(vegetation_type) %>%
+      summarize(mean_charge = mean(charge_sum, na.rm = TRUE)) %>%
+      ungroup()
+    
+    # 4) Palette “officielle” (hex codes)
+    palette_habitat_init <- c(
+      "Formations minérales"             = "#696969",
+      "Pelouses productives"             = "#FFD700",
+      "Pelouses nivales"                 = "#1E90FF",
+      "Pelouses humides"                 = "#20B2AA",
+      "Landes"                           = "#800080",
+      "Forêts non pastorales"            = "#006400",
+      "Nardaies denses du subalpin"      = "#32CD32",
+      "Megaphorbiaies et Aulnaies"       = "#7FFF00",
+      "P. thermiques écorchées"          = "#FF6347",
+      "P. intermédiaires de l’alpin"     = "#FF0000",
+      "P. th. méditerranéo-montagnardes" = "#FF4500",
+      "P. en bombement de l’alpin"       = "#00CED1",
+      "Pelouses nitrophiles"             = "#ADFF2F",
+      "Queyrellins"                      = "#FFFF00",
+      "Sous-bois pastoraux"              = "#8B4513",
+      "Autres"                           = "#FFC0CB"
+    )
+    
+    # 5) Vérifier que tous les habitats figurent dans la palette
+    habitats_present <- df_mean$vegetation_type
+    missing_pal <- setdiff(habitats_present, names(palette_habitat_init))
+    if (length(missing_pal) > 0) {
+      stop(
+        "Les habitats suivants n’ont pas de couleur définie :\n",
+        paste0("  • ", missing_pal, collapse = "\n")
+      )
+    }
+    
+    # 6) Trier par mean_charge ASCENDANT, puis transformer en facteur
+    df_mean <- df_mean %>%
+      arrange(mean_charge) %>%
+      mutate(vegetation_type = factor(vegetation_type, levels = vegetation_type))
+    
+    # 7) Palette restreinte à l’ordre des habitats retenus
+    pal_finale <- palette_habitat_init[as.character(df_mean$vegetation_type)]
+    
+    # 8) Construction du barplot horizontal (sans étiquettes, barres plus épaisses)
+    p <- ggplot(df_mean, aes(x = vegetation_type, y = mean_charge, fill = vegetation_type)) +
+      geom_col(width = 0.8, color = NA) +      # width = 0.8 pour barres plus épaisses
+      scale_fill_manual(values = pal_finale) +
+      coord_flip() +
+      
+      # Titre et axes
+      scale_y_continuous(
+        labels = comma,
+        expand = expansion(mult = c(0, 0.05))   # un peu d’espace à droite pour ne pas coincer les barres
+      ) +
+      labs(
+        title = paste0("Charge moyenne par habitat – ", basename(load_veget_rds)),
+        x     = NULL,
+        y     = "Présence du troupeau (brebis·jours) [moyenne]"
+      ) +
+      
+      # Thème ultra-épuré
+      theme_minimal(base_size = 14, base_family = "Helvetica") +
+      theme(
+        plot.background       = element_rect(fill = "white", color = NA),
+        panel.background      = element_rect(fill = "white", color = NA),
+        plot.title            = element_text(face = "bold", hjust = 0, size = 16),
+        axis.text.y           = element_text(size = 12, margin = margin(r = 5)),
+        axis.text.x           = element_text(size = 10),
+        axis.title.x          = element_text(margin = margin(t = 10)),
+        panel.grid.major.x    = element_line(color = "grey90"),
+        panel.grid.major.y    = element_blank(),
+        panel.grid.minor      = element_blank(),
+        axis.line.x           = element_line(color = "black"),
+        axis.line.y           = element_blank(),
+        axis.ticks.y          = element_blank(),
+        legend.position       = "none"
+      )
+    
+    # 9) Sauvegarde au format PNG (10×6 pouces, 300 dpi)
+    ggsave(
+      filename = output_bar_png,
+      plot     = p,
+      width    = 10,
+      height   = 6,
+      dpi      = 300,
+      units    = "in"
+    )
+    
+    message("✅ Barplot horizontal (moyenne, tri ascendant) enregistré dans : ", output_bar_png)
+  }
+  
+  
+  # ================================================================================
+  # Exemple d’appel (à placer dans votre boucle alpage) :
+  # ================================================================================
+  alpage <- "Cayolle"
+  YEAR   <- 2023
+  #
+  load_veget_rds <- file.path(
+     output_load_veget_case,
+     paste0("charge_by_habitat_day_", YEAR, "_", alpage, ".rds")
+   )
+   output_bar_png <- file.path(
+     output_load_veget_case,
+     paste0("Charge_moyenne_par_habitat_", YEAR, "_", alpage, ".png")
+   )
+
+   mean_load_by_habitat_bareh(
+     load_veget_rds = load_veget_rds,
+     output_bar_png = output_bar_png
+   )
+  
+  
+  
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   library(dplyr)
+   library(ggplot2)
+   library(scales)
+   
+   # =============================================================================
+   # Fonction : delta_load_by_habitat_bareh()
+   # =============================================================================
+   # Cette fonction :
+   #   1. Lit deux fichiers RDS (year1, year2) contenant chacun au moins :
+   #        - day (entier, non utilisé ici)
+   #        - vegetation_type (habitat)
+   #        - charge_sum (charge journalière)
+   #   2. Calcule la charge moyenne par habitat pour chaque année.
+   #   3. Calcule le delta = mean_charge_year2 - mean_charge_year1.
+   #   4. Trie les habitats par delta (du plus négatif au plus positif).
+   #   5. Trace un barplot horizontal divergent (droite = +, gauche = −), sans contours,
+   #      utilisant votre palette d’habitat.  
+   #   6. Enregistre le résultat au format PNG.
+   #
+   # Arguments :
+   #   - load_rds_year1 : chemin complet vers le RDS de l’année 1 (ex. 2022)
+   #   - load_rds_year2 : chemin complet vers le RDS de l’année 2 (ex. 2023)
+   #   - output_png     : chemin complet (avec .png) pour sauvegarder le barplot
+   #   - label_year1    : chaîne de caractères (ex. "2022") pour apparaître dans le titre
+   #   - label_year2    : chaîne de caractères (ex. "2023") pour apparaître dans le titre
+   # =============================================================================
+   
+   delta_load_by_habitat_bareh <- function(load_rds_year1,
+                                           load_rds_year2,
+                                           output_png,
+                                           label_year1 = "Year1",
+                                           label_year2 = "Year2") {
+     # 1) Lecture des deux fichiers RDS
+     df1 <- readRDS(load_rds_year1)  # ex. "charge_by_habitat_day_2022.rds"
+     df2 <- readRDS(load_rds_year2)  # ex. "charge_by_habitat_day_2023.rds"
+     
+     # 2) Filtrer les NA sur vegetation_type
+     df1 <- df1 %>% filter(!is.na(vegetation_type))
+     df2 <- df2 %>% filter(!is.na(vegetation_type))
+     
+     # 3) Calcul de la charge moyenne par habitat pour chaque année
+     mean1 <- df1 %>%
+       group_by(vegetation_type) %>%
+       summarize(mean_charge1 = mean(charge_sum, na.rm = TRUE)) %>%
+       ungroup()
+     
+     mean2 <- df2 %>%
+       group_by(vegetation_type) %>%
+       summarize(mean_charge2 = mean(charge_sum, na.rm = TRUE)) %>%
+       ungroup()
+     
+     # 4) Fusionner les deux pour calculer delta ; s’assurer que tous les habitats apparaissent
+     df_delta <- full_join(mean1, mean2, by = "vegetation_type") %>%
+       # si un habitat n’existait que dans l’une des deux années, mean_charge devient NA
+       replace_na(list(mean_charge1 = 0, mean_charge2 = 0)) %>%
+       mutate(delta = mean_charge2 - mean_charge1)
+     
+     # 5) Palette “officielle” (hex codes), identique à celle des graphiques précédents
+     palette_habitat_init <- c(
+       "Formations minérales"             = "#696969",
+       "Pelouses productives"             = "#FFD700",
+       "Pelouses nivales"                 = "#1E90FF",
+       "Pelouses humides"                 = "#20B2AA",
+       "Landes"                           = "#800080",
+       "Forêts non pastorales"            = "#006400",
+       "Nardaies denses du subalpin"      = "#32CD32",
+       "Megaphorbiaies et Aulnaies"       = "#7FFF00",
+       "P. thermiques écorchées"          = "#FF6347",
+       "P. intermédiaires de l’alpin"     = "#FF0000",
+       "P. th. méditerranéo-montagnardes" = "#FF4500",
+       "P. en bombement de l’alpin"       = "#00CED1",
+       "Pelouses nitrophiles"             = "#ADFF2F",
+       "Queyrellins"                      = "#FFFF00",
+       "Sous-bois pastoraux"              = "#8B4513",
+       "Autres"                           = "#FFC0CB"
+     )
+     
+     # 6) S’assurer que tous les habitats figurent bien dans la palette
+     habitats_present <- df_delta$vegetation_type
+     missing_pal <- setdiff(habitats_present, names(palette_habitat_init))
+     if (length(missing_pal) > 0) {
+       stop(
+         "Les habitats suivants ne sont pas dans la palette :\n",
+         paste0("  • ", missing_pal, collapse = "\n")
+       )
+     }
+     
+     # 7) Trier par delta (du plus négatif au plus positif), transformer en facteur
+     df_delta <- df_delta %>%
+       arrange(delta) %>%
+       mutate(vegetation_type = factor(vegetation_type, levels = vegetation_type))
+     
+     # 8) Palette restreinte à l’ordre des habitats présents
+     pal_finale <- palette_habitat_init[as.character(df_delta$vegetation_type)]
+     
+     # 9) Construction du graphique divergent horizontal
+     #    On crée un axe X (delta) qui peut prendre des valeurs négatives (gauche) ou positives (droite).
+     p <- ggplot(df_delta, aes(x = vegetation_type, y = delta, fill = vegetation_type)) +
+       geom_col(width = 0.8, color = NA) +       # barres épaisses, sans contour
+       scale_fill_manual(values = pal_finale) +
+       coord_flip() +
+       
+       # Ligne verticale de référence en zéro
+       geom_vline(xintercept = 0, color = "black", size = 0.5) +
+       
+       # Titre et axes
+       scale_y_continuous(
+         labels = comma,
+         expand = expansion(mult = c(0.0, 0.05))
+       ) +
+       labs(
+         title = paste0(
+           "Δ Charge moyenne par habitat : ",
+           label_year2, " – ", label_year1
+         ),
+         x = NULL,
+         y = paste0(
+           "Δ Présence du troupeau (", label_year2, " – ", label_year1, 
+           ") [brebis·jours]"
+         )
+       ) +
+       
+       # Thème épuré
+       theme_minimal(base_size = 14, base_family = "Helvetica") +
+       theme(
+         plot.background        = element_rect(fill = "white", color = NA),
+         panel.background       = element_rect(fill = "white", color = NA),
+         plot.title             = element_text(face = "bold", hjust = 0, size = 16),
+         axis.text.y            = element_text(size = 12, margin = margin(r = 5)),
+         axis.text.x            = element_text(size = 10),
+         axis.title.x           = element_text(margin = margin(t = 10)),
+         panel.grid.major.x     = element_line(color = "grey90"),
+         panel.grid.major.y     = element_blank(),
+         panel.grid.minor       = element_blank(),
+         axis.line.x            = element_line(color = "black"),
+         axis.line.y            = element_blank(),
+         axis.ticks.y           = element_blank(),
+         legend.position        = "none"
+       )
+     
+     # 10) Enregistrement du PNG
+     ggsave(
+       filename = output_png,
+       plot     = p,
+       width    = 10,
+       height   = 6,
+       dpi      = 300,
+       units    = "in"
+     )
+     
+     message("✅ Barplot divergent enregistré dans : ", output_png)
+   }
+   
+   # ================================================================================
+   # Exemple d’appel 
+   # ================================================================================
+   # Supposons que vous ayez déjà produit :
+   #   charge_by_habitat_day_2022_Cayolle.rds
+   #   charge_by_habitat_day_2023_Cayolle.rds
+   #
+   # Vous pouvez alors faire :
+      alpage <- "Cayolle"
+      YEAR1  <- "2022"
+      YEAR2  <- "2023"
+   #
+     rds1 <- file.path(
+       output_load_veget_case,
+        paste0("charge_by_habitat_day_", YEAR1, "_", alpage, ".rds")
+      )
+     rds2 <- file.path(
+       output_load_veget_case,
+       paste0("charge_by_habitat_day_", YEAR2, "_", alpage, ".rds")
+     )
+     out_png <- file.path(
+       output_load_veget_case,
+       paste0("Delta_charge_", YEAR2, "_", YEAR1, "_", alpage, ".png")
+     )
+   #
+      delta_load_by_habitat_bareh(
+       load_rds_year1 = rds1,
+        load_rds_year2 = rds2,
+        output_png     = out_png,
+        label_year1    = YEAR1,
+        label_year2    = YEAR2
+      )
+   # ================================================================================
+   
+  
+ 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  # 1) Si nécessaire, transformer 'vegetation_type' en facteur et fixer l’ordre
+df_delta <- df_delta %>%
+  # Pour afficher les habitats du plus petit delta au plus grand en haut :
+  arrange(delta) %>%
+  mutate(
+    vegetation_type = factor(vegetation_type, levels = vegetation_type)
+  )
+
+# 2) Palette d’habitat (exemple, la même que plus haut)
+palette_habitat_init <- c(
+  "Formations minérales"             = "#696969",
+  "Pelouses productives"             = "#FFD700",
+  "Pelouses nivales"                 = "#1E90FF",
+  "Pelouses humides"                 = "#20B2AA",
+  "Landes"                           = "#800080",
+  "Forêts non pastorales"            = "#006400",
+  "Nardaies denses du subalpin"      = "#32CD32",
+  "Megaphorbiaies et Aulnaies"       = "#7FFF00",
+  "P. thermiques écorchées"          = "#FF6347",
+  "P. intermédiaires de l’alpin"     = "#FF0000",
+  "P. th. méditerranéo-montagnardes" = "#FF4500",
+  "P. en bombement de l’alpin"       = "#00CED1",
+  "Pelouses nitrophiles"             = "#ADFF2F",
+  "Queyrellins"                      = "#FFFF00",
+  "Sous-bois pastoraux"              = "#8B4513",
+  "Autres"                           = "#FFC0CB"
+)
+
+# S’assurer que la palette couvre exactement les habitats présents
+pal_finale <- palette_habitat_init[as.character(df_delta$vegetation_type)]
+
+# 3) Construire le slope‐graph (dumbbell chart)
+p_slope <- ggplot(df_delta) +
+  # 3.a. Segment qui relie la valeur 2022 à la valeur 2023 pour chaque habitat
+  geom_segment(aes(
+    y = vegetation_type,
+    x = mean_charge1,
+    xend = mean_charge2
+  ),
+  color = "grey70",
+  size = 1
+  ) +
+  # 3.b. Point “2022” à gauche
+  geom_point(aes(
+    y = vegetation_type,
+    x = mean_charge1,
+    fill = vegetation_type
+  ),
+  shape = 21, size = 4, color = "black", stroke = 0.2
+  ) +
+  # 3.c. Point “2023” à droite
+  geom_point(aes(
+    y = vegetation_type,
+    x = mean_charge2,
+    fill = vegetation_type
+  ),
+  shape = 21, size = 4, color = "black", stroke = 0.2
+  ) +
+  # 3.d. Palette de remplissage (couleur de l’habitat) pour les deux points
+  scale_fill_manual(values = pal_finale) +
+  
+  # 4) Axes et labels
+  scale_x_continuous(
+    labels = comma,
+    expand = expansion(mult = c(0.02, 0.05))
+  ) +
+  labs(
+    title = "Comparaison de l’usage moyen par habitat (2022 vs 2023)",
+    x = "Présence du troupeau (brebis·jours) [valeur moyenne]",
+    y = NULL,
+    subtitle = "À gauche : 2022  –  À droite : 2023"
+  ) +
+  
+  # 5) Thème épuré
+  theme_minimal(base_size = 14, base_family = "Helvetica") +
+  theme(
+    plot.background       = element_rect(fill = "white", color = NA),
+    panel.background      = element_rect(fill = "white", color = NA),
+    plot.title            = element_text(face = "bold", size = 16, hjust = 0),
+    plot.subtitle         = element_text(size = 12, hjust = 0),
+    axis.text.y           = element_text(size = 12, margin = margin(r = 10)),
+    axis.text.x           = element_text(size = 10),
+    axis.title.x          = element_text(margin = margin(t = 10)),
+    panel.grid.major.y    = element_blank(),
+    panel.grid.minor      = element_blank(),
+    panel.grid.major.x    = element_line(color = "grey90"),
+    axis.line.x           = element_line(color = "black"),
+    axis.line.y           = element_blank(),
+    legend.position       = "none"
+  )
+
+# 6) Sauvegarde en PNG (par exemple 10×7 pouces @ 300 dpi)
+ggsave(
+  p_slope,
+  filename = "Delta_Usage_Habitat_2023-2022_slope.png",
+  width    = 10,
+  height   = 7,
+  dpi      = 300,
+  units    = "in"
+)
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
