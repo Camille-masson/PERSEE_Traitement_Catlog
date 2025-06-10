@@ -7,10 +7,10 @@ gc()
 source("config.R")
 
 # Définition de l'année d'analyse et des alpages à traiter 
-YEAR = 2023
-YEARS = 2023
-alpage = "Rouanette"
-alpages = "Rouanette"
+YEAR = 2024
+YEARS = 2024
+alpage = "Crouzet"
+alpages = "Crouzet"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
@@ -402,7 +402,7 @@ if (TRUE) {
     
     # CODE
     # Alpages “Cayolle” et “Sanguiniere” : seuil 500 m, sans critère de durabilité
-    if (alpage %in% c("Cayolle", "Sanguiniere","Rouanette")) {
+    if (alpage %in% c("Cayolle", "Sanguiniere","Rouanette","Grand-Cabane","Crouzet")) {
       traj_by_night_park(
         state_rds_file       = state_rds_file,
         output_parc_rds_file = output_parc_rds_file,
