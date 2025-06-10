@@ -1,6 +1,5 @@
 #### 0. LIBRARIES AND CONSTANTS ####
 #----------------------------------#
-
 gc()
 
 # Chargement de la configuration
@@ -9,7 +8,7 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2024
+YEAR <- 2022
 YEARS <- c(2022, 2023, 2024)
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
 alpage <- "Cayolle"
@@ -657,18 +656,21 @@ if (FALSE){
   }
   
   # Un .GIF contenant les données de trajectoires catégorisées par comportement et collier
-  output_gif = file.path(output_GIF_case, "Gif_Cayolle_greenwave_2022.gif")
+  output_gif = file.path(output_GIF_case, "Gif_Cayolle_greenwave_2022_5.gif")
   
   # CODE
   
-  if(TRUE){
+  if(FALSE){
   create_gif_from_images(case_GIF_file,output_gif,file_pattern = "Carte_cayolle.*\\.(png|jpg)$",delay_seconds = 1.25)
   }
   
-  if(TRUE){
-  create_gif_from_images_day_bis (case_GIF_file,output_gif,file_pattern = "Band.*\\.(png|jpg)$",delay_seconds = 0.5)
+  if(FALSE){
+  create_gif_from_images_day_bis (case_GIF_file,output_gif,file_pattern = "Band.*\\.(png|jpg)$",delay_seconds = 0.15)
   }
   
+  if(TRUE){
+    create_gif_for_green_wave (case_GIF_file,output_gif,file_pattern = "Band.*\\.(png|jpg)$",delay_seconds = 0.15)
+  }
  
 
 }

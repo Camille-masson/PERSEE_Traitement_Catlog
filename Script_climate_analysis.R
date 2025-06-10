@@ -20,8 +20,8 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 # Définition de l'année d'analyse
 YEAR <- 2023
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Rouanette"
-alpages <- "Rouanette"
+alpage <- "Grande-Cabane"
+alpages <- "Grande-Cabane"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 

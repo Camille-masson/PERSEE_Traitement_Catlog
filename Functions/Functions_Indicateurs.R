@@ -1260,6 +1260,80 @@ create_gif_from_images_day_bis <- function(
 
 
 
+
+
+create_gif_for_green_wave <- function(
+    case_GIF_file,          # Dossier où se trouvent les images
+    output_gif,             # Chemin complet du GIF de sortie
+    file_pattern = "Carte_cayolle_.*\\.(png|jpg)$",
+    delay_seconds
+) {
+  # Libraries
+  library(magick)
+  library(stringr)
+  
+  # Définir la locale en français
+  Sys.setlocale("LC_TIME", "fr_FR.UTF-8")
+  
+  # Liste des fichiers correspondants
+  files <- list.files(case_GIF_file, pattern = file_pattern, full.names = TRUE)
+  if (length(files) == 0) {
+    stop("Aucun fichier image trouvé dans ", case_GIF_file, 
+         " avec le motif '", file_pattern, "'.")
+  }
+  
+  # Fonction pour extraire le suffixe numérique
+  numeric_suffix <- function(fname) {
+    as.integer(sub(".*_([0-9]+)\\..*", "\\1", fname))
+  }
+  
+  # Tri des fichiers selon le suffixe
+  files_sorted <- files[order(sapply(files, function(x) numeric_suffix(basename(x))))]
+  
+  # Liste annotée
+  img_list <- lapply(files_sorted, function(file) {
+    # Récupération du suffixe
+    idx <- numeric_suffix(basename(file))
+    
+    # Application du décalage : 001 → 121, 002 → 122, ...
+    doy <- idx + 120
+    
+    # Conversion DOY → date (année 2022)
+    date_converted <- as.Date(doy - 1, origin = "2022-01-01")
+    
+    # Formatage en français avec mois capitalisé
+    date_str <- format(date_converted, "%d %B %Y")
+    parts <- strsplit(date_str, " ")[[1]]
+    parts[2] <- paste0(toupper(substr(parts[2], 1, 1)), substr(parts[2], 2, nchar(parts[2])))
+    date_str <- paste(parts, collapse = " ")
+    
+    # Lecture et annotation
+    img <- image_read(file)
+    img <- image_annotate(
+      img,
+      text    = date_str,
+      gravity = "northwest",
+      location= "+100+100",
+      size    = 80, 
+      color   = "black",
+      boxcolor= "none",
+      weight  = 700
+    )
+    img
+  })
+  
+  # Assemblage et animation
+  img_joined   <- image_join(img_list)
+  magick_delay <- delay_seconds * 100
+  img_animated <- image_animate(img_joined, delay = magick_delay)
+  
+  # Sauvegarde
+  image_write(img_animated, path = output_gif)
+  message("GIF créé avec succès : ", output_gif)
+}
+
+
+
 load_by_veget <- function(alpage, alpage_info_file, UP_file, daily_rds_prefix, load_veget_rds)  {
   
   #Package
