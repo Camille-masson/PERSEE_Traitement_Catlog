@@ -8,11 +8,11 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 
 
 # Définition de l'année d'analyse
-YEAR <- 2022
-YEARS <- c(2022, 2023, 2024)
+YEAR <- 2024
+YEARS <- 2024
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Cayolle"
-alpages <- "Cayolle"
+alpage <- "Viso"
+alpages <- "Viso"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -63,7 +63,7 @@ filtering_and_saving_viterbi_by_alpage(input_rds_file, output_dir, YEAR)
 
 #### 1. Extraction des raster CHARGEMENT ####
 #-------------------------------------------#
-if (FALSE) {
+if (TRUE) {
   # Exctraction des raster au format tif 
   # Génération de différent tif : 
   # - Chargement total
@@ -151,13 +151,13 @@ if (FALSE) {
   # CODE
 
   #Indicateur : Charge total .TIF
-  if (FALSE) {
+  if (TRUE) {
   total_flock_load_tif(total_rds_prefix, output_flock_tot_tif, output_flock_tot_tif_crop, UP_file, alpage, alpage_info_file)
     }
   
   
   #Indicateur : Charge_by_state
-  if (FALSE) {
+  if (TRUE) {
   state_flock_load_tif(state_rds_prefix,output_flock_repos_tif,output_flock_deplacement_tif, output_flock_paturage_tif,
                        output_flock_repos_tif_crop, output_flock_deplacement_tif_crop , output_flock_paturage_tif_crop,
                        UP_file, alpage, alpage_info_file)
@@ -238,7 +238,7 @@ if (FALSE) {
 
 #### 2. Calcul de la distance et du denivelé ####
 #-----------------------------------------------#
-if (FALSE) {
+if (TRUE) {
   # Calcul de la distance et du denivelé par jour sur l'ensemble des colliers
   # Le tout stocké par alpage et par année souys forme d'un csv
   
@@ -289,7 +289,7 @@ if (FALSE) {
   
 #### 3. Calcul date de pature ####
 #--------------------------------#
-if (FALSE) {
+if (TRUE) {
   # Calcul de la date de mise en pature de chaque espace pixel par pixel lorsque
   # le chargement dépasse un seuil de paturage on concidère la mise en pature du
   # pixel ainsi le jour julien et noté pour chaque pixel 
@@ -343,14 +343,17 @@ if (FALSE) {
   }
   
   
-  if(TRUE){
+  if(FALSE){
     generate_new_grazed_area_by_day(daily_rds_prefix,output_case_alpage,YEAR,alpage,threshold = 1,crs_string = "+init=epsg:2154")
   }
   
   
-  
-  
-  
+  if(TRUE){
+  count_nb_grazing_days(daily_rds_prefix,
+                        output_nb_grazing_rds,
+                        output_nb_grazing_tif,
+                        threshold = 10)}
+    
   
   
   
@@ -413,12 +416,18 @@ if (FALSE) {
   
   
   
+  count_nb_grazing_days(daily_rds_prefix,
+                                    output_nb_grazing_rds,
+                                    output_nb_grazing_tif,
+                                    threshold = 10)
+  
+  
   
 }
   
 #### 4. Vecteur du comportement ####
 #----------------------------------#  
-if (FALSE){
+if (TRUE){
   #Library
   source(file.path(functions_dir, "Functions_Indicateurs.R"))
   library(sf)
@@ -641,7 +650,7 @@ if (FALSE){
   
   #ENTREE
   # Un dossier contenant les ratsers des Unités Pastorales (UP)
-  case_GIF_file = file.path(raster_dir, "Image_GIF_greenwave")
+  case_GIF_file = file.path(raster_dir, "Image_GIF_greenwave_2")
   
   # SORTIE 
   # Création du dossier de sortie des indicateur pour la visualistaion
@@ -656,7 +665,7 @@ if (FALSE){
   }
   
   # Un .GIF contenant les données de trajectoires catégorisées par comportement et collier
-  output_gif = file.path(output_GIF_case, "Gif_Cayolle_greenwave_2022_5.gif")
+  output_gif = file.path(output_GIF_case, "Gif_Cayolle_greenwave_2022_6.gif")
   
   # CODE
   
@@ -677,7 +686,7 @@ if (FALSE){
 
 #### 8. Graph Dénivelé et distance ####
 #-------------------------------------#
-if (FALSE){
+if (TRUE){
   #LIBRARY
   source(file.path(functions_dir, "Functions_Indicateurs.R"))
   

@@ -20,8 +20,8 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 # Définition de l'année d'analyse
 YEAR <- 2023
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Grande-Cabane"
-alpages <- "Grande-Cabane"
+alpage <- "Sanguiniere"
+alpages <- "Sanguiniere"
 # Liste complète des alpages 2023 : "Cayolle", "Crouzet", "Grande-Cabane", "Lanchatra", "Rouanette", "Sanguiniere", "Vacherie-de-Roubion", "Viso"
 # Liste complète des alpages 2022 : "Cayolle", "Combe-Madame", "Grande-Fesse", "Jas-des-Lievres", "Lanchatra", "Pelvas", "Sanguiniere", "Viso"
 
@@ -46,7 +46,7 @@ ALPAGES <- ALPAGES_TOTAL[[as.character(YEAR)]]
 
 #### 1. Préparation des données de SMOD ####
 #------------------------------------------#
-if (FALSE) {
+if (TRUE) {
   # Crop du smod par alpage 
   # Calcul du SMOD moyen sur 10 ans (2023 - 2013)
   # Calcul du fsca (fraction of snow cover)
@@ -627,6 +627,7 @@ if (TRUE){
   
   
   
+}
   
   
   
@@ -649,7 +650,176 @@ if (TRUE){
   
   
   
-  # PART 3 : Plot 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# PART 3 : Plot 
   
   
   # ENTRE

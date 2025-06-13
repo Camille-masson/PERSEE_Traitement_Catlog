@@ -10,8 +10,8 @@ source(file.path(functions_dir, "Functions_filtering.R"))
 # Définition de l'année d'analyse
 YEAR <- 2024
 TYPE <- "catlog" #Type de données d'entrée (CATLOG, OFB )
-alpage <- "Viso"
-alpages <- "Viso"
+alpage <- "Sanguiniere"
+alpages <- "Sanguiniere"
 
 ALPAGES_TOTAL <- list(
   "9999" = c("Alpage_demo"),
